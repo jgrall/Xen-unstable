@@ -2195,21 +2195,19 @@ interactive_bootkey()
 //--------------------------------------------------------------------------
 
 void
-print_boot_device(e)
-  ipl_entry_t *e;
+print_boot_device(type, desc)
+  Bit16u type; Bit32u desc;
 {
-  Bit16u type;
   char description[33];
   Bit16u ss = get_SS();
-  type = e->type;
   /* NIC appears as type 0x80 */
   if (type == IPL_TYPE_BEV) type = 0x4;
   if (type == 0 || type > 0x4) BX_PANIC("Bad drive type\n");
   printf("Booting from %s", drivetypes[type]);
   /* print product string if BEV */
-  if (type == 4 && e->description != 0) {
+  if (type == 4 && desc != 0) {
     /* first 32 bytes are significant */
-    memcpyb(ss, &description, (Bit16u)(e->description >> 16), (Bit16u)(e->description & 0xffff), 32);
+    memcpyb(ss, &description, (Bit16u)(desc >> 16), (Bit16u)(desc & 0xffff), 32);
     /* terminate string */
     description[32] = 0;
     printf(" [%S]", ss, description);
@@ -8243,7 +8241,27 @@ Bit16u seq_nr;
     write_word(ebda_seg, IPL_BOOTFIRST_OFFSET, 0xFFFF);
     /* Reset boot sequence */
     write_word(ebda_seg, IPL_SEQUENCE_OFFSET, 0xFFFF);
-  } else if (bootdev == 0) BX_PANIC("No bootable device.\n");
+  } else if (bootdev == 0) {
+    printf("\nNo bootable device.\n");
+    printf("Reboot or press any key to retry.");
+    write_word(ebda_seg, IPL_SEQUENCE_OFFSET, 0xFFFF);
+ASM_START
+    sti
+ASM_END
+    {
+      Bit8u sc, ac;
+      while(!dequeue_key(&sc, &ac, 1)) {
+ASM_START
+        hlt
+ASM_END
+      }
+    }
+ASM_START
+    cli
+ASM_END
+    printf("\n\n");
+    return;
+  }
 
   /* Translate from CMOS runes to an IPL table offset by subtracting 1 */
   bootdev -= 1;
@@ -8264,7 +8282,7 @@ Bit16u seq_nr;
 
   /* Do the loading, and set up vector as a far pointer to the boot
    * address, and bootdrv as the boot drive */
-  print_boot_device(&e);
+  print_boot_device(e.type, e.description);
 
   switch(e.type) {
   case IPL_TYPE_FLOPPY: /* FDD */
