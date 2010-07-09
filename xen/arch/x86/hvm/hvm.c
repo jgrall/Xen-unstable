@@ -2011,6 +2011,8 @@ void hvm_rdtsc_intercept(struct cpu_user_regs *regs)
     tsc = hvm_get_guest_tsc(v);
     regs->eax = (uint32_t)tsc;
     regs->edx = (uint32_t)(tsc >> 32);
+
+    HVMTRACE_2D(RDTSC, regs->eax, regs->edx);
 }
 
 int hvm_msr_read_intercept(unsigned int msr, uint64_t *msr_content)
@@ -2103,6 +2105,8 @@ int hvm_msr_read_intercept(unsigned int msr, uint64_t *msr_content)
         }
     }
 
+    HVMTRACE_3D(MSR_READ, (uint32_t)*msr_content, (uint32_t)(*msr_content >> 32), msr);
+
     return X86EMUL_OKAY;
 
 gp_fault:
@@ -2116,6 +2120,8 @@ int hvm_msr_write_intercept(unsigned int msr, uint64_t msr_content)
     int index, mtrr;
     uint32_t cpuid[4];
     int ret;
+
+    HVMTRACE_3D(MSR_WRITE, (uint32_t)msr_content, (uint32_t)(msr_content >> 32), msr);
 
     hvm_cpuid(1, &cpuid[0], &cpuid[1], &cpuid[2], &cpuid[3]);
     mtrr = !!(cpuid[3] & bitmaskof(X86_FEATURE_MTRR));
