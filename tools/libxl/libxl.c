@@ -1420,12 +1420,12 @@ int libxl_detach_device_model(libxl_ctx *ctx,
 int libxl_confirm_device_model_startup(libxl_ctx *ctx,
                                        libxl_device_model_starting *starting)
 {
-    int problem = libxl_wait_for_device_model(ctx, starting->domid, "running",
-                                              libxl_spawn_check,
-                                              starting->for_spawn);
-    int detach = libxl_detach_device_model(ctx, starting);
+    int problem = libxl_wait_for_device_model(ctx, starting->domid, "running", NULL, NULL);
+    int detach;
+    if ( !problem )
+        problem = libxl_spawn_check(ctx, starting->for_spawn);
+    detach = libxl_detach_device_model(ctx, starting);
     return problem ? problem : detach;
-    return 0;
 }
 
 
@@ -1473,7 +1473,7 @@ int libxl_device_disk_add(libxl_ctx *ctx, uint32_t domid, libxl_device_disk *dis
     backend_type = device_disk_backend_type_of_phystype(disk->phystype);
     devid = device_disk_dev_number(disk->virtpath);
     if (devid==-1) {
-        XL_LOG(ctx, XL_LOG_ERROR, "Invalid or unuspported"
+        XL_LOG(ctx, XL_LOG_ERROR, "Invalid or unsupported"
                " virtual disk identifier %s", disk->virtpath);
         return ERROR_INVAL;
     }
