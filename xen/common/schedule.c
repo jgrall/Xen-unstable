@@ -276,6 +276,7 @@ int sched_move_domain(struct domain *d, struct cpupool *c)
 
         new_p = cycle_cpu(new_p, c->cpu_valid);
     }
+    domain_update_node_affinity(d);
 
     d->cpupool = c;
     SCHED_OP(DOM2OP(d), free_domdata, d->sched_priv);
@@ -457,6 +458,7 @@ int cpu_disable_scheduler(unsigned int cpu)
     struct vcpu *v;
     struct cpupool *c;
     int    ret = 0;
+    bool_t affinity_broken;
 
     c = per_cpu(cpupool, cpu);
     if ( c == NULL )
@@ -466,6 +468,8 @@ int cpu_disable_scheduler(unsigned int cpu)
     {
         if ( d->cpupool != c )
             continue;
+
+        affinity_broken = 0;
 
         for_each_vcpu ( d, v )
         {
@@ -477,6 +481,7 @@ int cpu_disable_scheduler(unsigned int cpu)
                 printk("Breaking vcpu affinity for domain %d vcpu %d\n",
                         v->domain->domain_id, v->vcpu_id);
                 cpus_setall(v->cpu_affinity);
+                affinity_broken = 1;
             }
 
             if ( v->processor == cpu )
@@ -499,7 +504,11 @@ int cpu_disable_scheduler(unsigned int cpu)
             if ( v->processor == cpu )
                 ret = -EAGAIN;
         }
+
+        if ( affinity_broken )
+            domain_update_node_affinity(d);
     }
+
     return ret;
 }
 
@@ -519,6 +528,7 @@ int vcpu_set_affinity(struct vcpu *v, cpumask_t *affinity)
 
     old_affinity = v->cpu_affinity;
     v->cpu_affinity = *affinity;
+    domain_update_node_affinity(v->domain);
     *affinity = old_affinity;
     if ( !cpu_isset(v->processor, v->cpu_affinity) )
         set_bit(_VPF_migrating, &v->pause_flags);
