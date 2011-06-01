@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-enum virtual_vga { VGA_none, VGA_std, VGA_cirrus, VGA_pt } virtual_vga;
+enum virtual_vga { VGA_none, VGA_std, VGA_cirrus, VGA_pt };
 extern enum virtual_vga virtual_vga;
 
 struct bios_config {
@@ -19,14 +19,14 @@ struct bios_config {
     /* SMBIOS */
     unsigned int smbios_start, smbios_end;
 
-    /* Option ROMs */
+    /* ROMS */
+    int load_roms;
     unsigned int optionrom_start, optionrom_end;
 
     /* ACPI tables */
     unsigned int acpi_start;
 
     void (*apic_setup)(void);
-    void (*pci_setup)(void);
     void (*smp_setup)(void);
 
     uint32_t (*bios_high_setup)(void);

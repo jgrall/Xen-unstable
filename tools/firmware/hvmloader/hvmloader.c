@@ -109,11 +109,6 @@ asm (
     "    .text                       \n"
     );
 
-unsigned long pci_mem_start = PCI_MEM_START;
-unsigned long pci_mem_end = PCI_MEM_END;
-
-enum virtual_vga virtual_vga = VGA_none;
-
 static void init_hypercalls(void)
 {
     uint32_t eax, ebx, ecx, edx;
@@ -373,7 +368,7 @@ int main(void)
     uint32_t highbios = 0;
     const struct bios_config *bios;
     int option_rom_sz = 0, vgabios_sz = 0, etherboot_sz = 0, smbios_sz = 0;
-    uint32_t etherboot_phys_addr, option_rom_phys_addr;
+    uint32_t etherboot_phys_addr = 0, option_rom_phys_addr = 0;
 
     /* Initialise hypercall stubs with RET, rendering them no-ops. */
     memset((void *)HYPERCALL_PHYSICAL_ADDRESS, 0xc3 /* RET */, PAGE_SIZE);
@@ -391,8 +386,7 @@ int main(void)
 
     if (bios->apic_setup)
         bios->apic_setup();
-    if (bios->pci_setup)
-        bios->pci_setup();
+    pci_setup();
 
     if (bios->smp_setup)
         bios->smp_setup();
@@ -417,39 +411,42 @@ int main(void)
          ( (hvm_info->nr_vcpus > 1) || hvm_info->apic_mode ) )
         bios->create_mp_tables();
 
-    switch ( virtual_vga )
+    if ( bios->load_roms )
     {
-    case VGA_cirrus:
-        printf("Loading Cirrus VGABIOS ...\n");
-        memcpy((void *)VGABIOS_PHYSICAL_ADDRESS,
-               vgabios_cirrusvga, sizeof(vgabios_cirrusvga));
-        vgabios_sz = round_option_rom(sizeof(vgabios_cirrusvga));
-        break;
-    case VGA_std:
-        printf("Loading Standard VGABIOS ...\n");
-        memcpy((void *)VGABIOS_PHYSICAL_ADDRESS,
-               vgabios_stdvga, sizeof(vgabios_stdvga));
-        vgabios_sz = round_option_rom(sizeof(vgabios_stdvga));
-        break;
-    case VGA_pt:
-        printf("Loading VGABIOS of passthroughed gfx ...\n");
-        vgabios_sz =
-            round_option_rom((*(uint8_t *)(VGABIOS_PHYSICAL_ADDRESS+2)) * 512);
-        break;
-    default:
-        printf("No emulated VGA adaptor ...\n");
-        break;
+        switch ( virtual_vga )
+        {
+        case VGA_cirrus:
+            printf("Loading Cirrus VGABIOS ...\n");
+            memcpy((void *)VGABIOS_PHYSICAL_ADDRESS,
+                   vgabios_cirrusvga, sizeof(vgabios_cirrusvga));
+            vgabios_sz = round_option_rom(sizeof(vgabios_cirrusvga));
+            break;
+        case VGA_std:
+            printf("Loading Standard VGABIOS ...\n");
+            memcpy((void *)VGABIOS_PHYSICAL_ADDRESS,
+                   vgabios_stdvga, sizeof(vgabios_stdvga));
+            vgabios_sz = round_option_rom(sizeof(vgabios_stdvga));
+            break;
+        case VGA_pt:
+            printf("Loading VGABIOS of passthroughed gfx ...\n");
+            vgabios_sz = round_option_rom(
+                (*(uint8_t *)(VGABIOS_PHYSICAL_ADDRESS+2)) * 512);
+            break;
+        default:
+            printf("No emulated VGA adaptor ...\n");
+            break;
+        }
+
+        etherboot_phys_addr = VGABIOS_PHYSICAL_ADDRESS + vgabios_sz;
+        if ( etherboot_phys_addr < bios->optionrom_start )
+            etherboot_phys_addr = bios->optionrom_start;
+        etherboot_sz = scan_etherboot_nic(bios->optionrom_end,
+                                          etherboot_phys_addr);
+
+        option_rom_phys_addr = etherboot_phys_addr + etherboot_sz;
+        option_rom_sz = pci_load_option_roms(bios->optionrom_end,
+                                             option_rom_phys_addr);
     }
-
-    etherboot_phys_addr = VGABIOS_PHYSICAL_ADDRESS + vgabios_sz;
-    if ( etherboot_phys_addr < bios->optionrom_start )
-        etherboot_phys_addr = bios->optionrom_start;
-    etherboot_sz = scan_etherboot_nic(bios->optionrom_end,
-                                      etherboot_phys_addr);
-
-    option_rom_phys_addr = etherboot_phys_addr + etherboot_sz;
-    option_rom_sz = pci_load_option_roms(bios->optionrom_end,
-                                         option_rom_phys_addr);
 
     if ( hvm_info->acpi_enabled )
     {
