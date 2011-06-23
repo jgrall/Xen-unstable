@@ -25,25 +25,29 @@
 #define __XEN_PAGING2_H__
 
 
-#include "xc.h"
 #include <xc_private.h>
-
 #include <xen/event_channel.h>
 #include <xen/mem_event.h>
 
-#include "mem_event.h"
-
+typedef struct mem_event {
+    domid_t domain_id;
+    xc_evtchn *xce_handle;
+    int port;
+    mem_event_back_ring_t back_ring;
+    mem_event_shared_page_t *shared_page;
+    void *ring_page;
+} mem_event_t;
 
 typedef struct xenpaging {
     xc_interface *xc_handle;
+    struct xs_handle *xs_handle;
 
-    xc_platform_info_t *platform_info;
     xc_domaininfo_t    *domain_info;
 
-    unsigned long  bitmap_size;
     unsigned long *bitmap;
 
     mem_event_t mem_event;
+    int num_pages;
     int policy_mru_size;
 } xenpaging_t;
 
@@ -53,6 +57,9 @@ typedef struct xenpaging_victim {
     unsigned long gfn;
 } xenpaging_victim_t;
 
+
+extern void create_page_in_thread(domid_t domain_id, xc_interface *xch);
+extern void page_in_trigger(unsigned long gfn);
 
 #endif // __XEN_PAGING_H__
 

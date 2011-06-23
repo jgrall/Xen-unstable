@@ -7,7 +7,8 @@ LDLIBS += $(LDLIBS_libxenctrl) $(LDLIBS_libxenstore)
 POLICY    = default
 
 SRC      :=
-SRCS     += file_ops.c xc.c xenpaging.c policy_$(POLICY).c
+SRCS     += file_ops.c xenpaging.c policy_$(POLICY).c
+SRCS     += pagein.c
 
 CFLAGS   += -Werror
 CFLAGS   += -Wno-unused

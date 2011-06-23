@@ -27,24 +27,114 @@
 #include <time.h>
 #include <signal.h>
 #include <unistd.h>
+#include <poll.h>
 #include <xc_private.h>
+#include <xs.h>
 
-#include <xen/mem_event.h>
-
-#include "bitops.h"
+#include "xc_bitops.h"
 #include "file_ops.h"
-#include "xc.h"
-
 #include "policy.h"
 #include "xenpaging.h"
 
+static char watch_token[16];
 static char filename[80];
 static int interrupted;
+
+static void unlink_pagefile(void)
+{
+    if ( filename[0] )
+    {
+        unlink(filename);
+        filename[0] = '\0';
+    }
+}
+
 static void close_handler(int sig)
 {
     interrupted = sig;
-    if ( filename[0] )
-        unlink(filename);
+    unlink_pagefile();
+}
+
+static int xenpaging_mem_paging_flush_ioemu_cache(xenpaging_t *paging)
+{
+    struct xs_handle *xsh = paging->xs_handle;
+    domid_t domain_id = paging->mem_event.domain_id;
+    char path[80];
+    bool rc;
+
+    sprintf(path, "/local/domain/0/device-model/%u/command", domain_id);
+
+    rc = xs_write(xsh, XBT_NULL, path, "flush-cache", strlen("flush-cache")); 
+
+    return rc == true ? 0 : -1;
+}
+
+static int xenpaging_wait_for_event_or_timeout(xenpaging_t *paging)
+{
+    xc_interface *xch = paging->xc_handle;
+    xc_evtchn *xce = paging->mem_event.xce_handle;
+    char **vec;
+    unsigned int num;
+    struct pollfd fd[2];
+    int port;
+    int rc;
+
+    /* Wait for event channel and xenstore */
+    fd[0].fd = xc_evtchn_fd(xce);
+    fd[0].events = POLLIN | POLLERR;
+    fd[1].fd = xs_fileno(paging->xs_handle);
+    fd[1].events = POLLIN | POLLERR;
+
+    rc = poll(fd, 2, 100);
+    if ( rc < 0 )
+    {
+        if (errno == EINTR)
+            return 0;
+
+        ERROR("Poll exited with an error");
+        return -errno;
+    }
+
+    /* First check for guest shutdown */
+    if ( rc && fd[1].revents & POLLIN )
+    {
+        DPRINTF("Got event from xenstore\n");
+        vec = xs_read_watch(paging->xs_handle, &num);
+        if ( vec )
+        {
+            if ( strcmp(vec[XS_WATCH_TOKEN], watch_token) == 0 )
+            {
+                /* If our guest disappeared, set interrupt flag and fall through */
+                if ( xs_is_domain_introduced(paging->xs_handle, paging->mem_event.domain_id) == false )
+                {
+                    xs_unwatch(paging->xs_handle, "@releaseDomain", watch_token);
+                    interrupted = SIGQUIT;
+                    rc = 0;
+                }
+            }
+            free(vec);
+        }
+    }
+
+    if ( rc && fd[0].revents & POLLIN )
+    {
+        DPRINTF("Got event from evtchn\n");
+        port = xc_evtchn_pending(xce);
+        if ( port == -1 )
+        {
+            ERROR("Failed to read port from event channel");
+            rc = -1;
+            goto err;
+        }
+
+        rc = xc_evtchn_unmask(xce, port);
+        if ( rc < 0 )
+        {
+            ERROR("Failed to unmask event channel port");
+        }
+    }
+err:
+    return rc;
 }
 
 static void *init_page(void)
@@ -72,7 +162,7 @@ static void *init_page(void)
     return NULL;
 }
 
-static xenpaging_t *xenpaging_init(domid_t domain_id)
+static xenpaging_t *xenpaging_init(domid_t domain_id, int num_pages)
 {
     xenpaging_t *paging;
     xc_interface *xch;
@@ -91,6 +181,22 @@ static xenpaging_t *xenpaging_init(domid_t domain_id)
     /* Allocate memory */
     paging = malloc(sizeof(xenpaging_t));
     memset(paging, 0, sizeof(xenpaging_t));
+
+    /* Open connection to xenstore */
+    paging->xs_handle = xs_open(0);
+    if ( paging->xs_handle == NULL )
+    {
+        ERROR("Error initialising xenstore connection");
+        goto err;
+    }
+
+    /* write domain ID to watch so we can ignore other domain shutdowns */
+    snprintf(watch_token, sizeof(watch_token), "%u", domain_id);
+    if ( xs_watch(paging->xs_handle, "@releaseDomain", watch_token) == false )
+    {
+        ERROR("Could not bind to shutdown watch\n");
+        goto err;
+    }
 
     p = getenv("XENPAGING_POLICY_MRU_SIZE");
     if ( p && *p )
@@ -167,22 +273,6 @@ static xenpaging_t *xenpaging_init(domid_t domain_id)
 
     paging->mem_event.port = rc;
 
-    /* Get platform info */
-    paging->platform_info = malloc(sizeof(xc_platform_info_t));
-    if ( paging->platform_info == NULL )
-    {
-        ERROR("Error allocating memory for platform info");
-        goto err;
-    }
-
-    rc = xc_get_platform_info(xch, paging->mem_event.domain_id,
-                              paging->platform_info);
-    if ( rc != 1 )
-    {
-        ERROR("Error getting platform info");
-        goto err;
-    }
-
     /* Get domaininfo */
     paging->domain_info = malloc(sizeof(xc_domaininfo_t));
     if ( paging->domain_info == NULL )
@@ -200,16 +290,20 @@ static xenpaging_t *xenpaging_init(domid_t domain_id)
     }
 
     /* Allocate bitmap for tracking pages that have been paged out */
-    paging->bitmap_size = (paging->domain_info->max_pages + BITS_PER_LONG) &
-                          ~(BITS_PER_LONG - 1);
-
-    rc = alloc_bitmap(&paging->bitmap, paging->bitmap_size);
-    if ( rc != 0 )
+    paging->bitmap = bitmap_alloc(paging->domain_info->max_pages);
+    if ( !paging->bitmap )
     {
         ERROR("Error allocating bitmap");
         goto err;
     }
     DPRINTF("max_pages = %"PRIx64"\n", paging->domain_info->max_pages);
+
+    if ( num_pages < 0 || num_pages > paging->domain_info->max_pages )
+    {
+        num_pages = paging->domain_info->max_pages;
+        DPRINTF("setting num_pages to %d\n", num_pages);
+    }
+    paging->num_pages = num_pages;
 
     /* Initialise policy */
     rc = policy_init(paging);
@@ -224,6 +318,8 @@ static xenpaging_t *xenpaging_init(domid_t domain_id)
  err:
     if ( paging )
     {
+        if ( paging->xs_handle )
+            xs_close(paging->xs_handle);
         xc_interface_close(xch);
         if ( paging->mem_event.shared_page )
         {
@@ -238,7 +334,6 @@ static xenpaging_t *xenpaging_init(domid_t domain_id)
         }
 
         free(paging->bitmap);
-        free(paging->platform_info);
         free(paging->domain_info);
         free(paging);
     }
@@ -280,6 +375,9 @@ static int xenpaging_teardown(xenpaging_t *paging)
     }
     paging->mem_event.xce_handle = NULL;
     
+    /* Close connection to xenstore */
+    xs_close(paging->xs_handle);
+
     /* Close connection to Xen */
     rc = xc_interface_close(xch);
     if ( rc != 0 )
@@ -293,7 +391,7 @@ static int xenpaging_teardown(xenpaging_t *paging)
     return -1;
 }
 
-static int get_request(mem_event_t *mem_event, mem_event_request_t *req)
+static void get_request(mem_event_t *mem_event, mem_event_request_t *req)
 {
     mem_event_back_ring_t *back_ring;
     RING_IDX req_cons;
@@ -308,11 +406,9 @@ static int get_request(mem_event_t *mem_event, mem_event_request_t *req)
     /* Update ring */
     back_ring->req_cons = req_cons;
     back_ring->sring->req_event = req_cons + 1;
-
-    return 0;
 }
 
-static int put_response(mem_event_t *mem_event, mem_event_response_t *rsp)
+static void put_response(mem_event_t *mem_event, mem_event_response_t *rsp)
 {
     mem_event_back_ring_t *back_ring;
     RING_IDX rsp_prod;
@@ -327,8 +423,6 @@ static int put_response(mem_event_t *mem_event, mem_event_response_t *rsp)
     /* Update ring */
     back_ring->rsp_prod_pvt = rsp_prod;
     RING_PUSH_RESPONSES(back_ring);
-
-    return 0;
 }
 
 static int xenpaging_evict_page(xenpaging_t *paging,
@@ -388,9 +482,7 @@ static int xenpaging_resume_page(xenpaging_t *paging, mem_event_response_t *rsp,
     int ret;
 
     /* Put the page info on the ring */
-    ret = put_response(&paging->mem_event, rsp);
-    if ( ret != 0 )
-        goto out;
+    put_response(&paging->mem_event, rsp);
 
     /* Notify policy of page being paged in */
     if ( notify_policy )
@@ -399,35 +491,33 @@ static int xenpaging_resume_page(xenpaging_t *paging, mem_event_response_t *rsp,
     /* Tell Xen page is ready */
     ret = xc_mem_paging_resume(paging->xc_handle, paging->mem_event.domain_id,
                                rsp->gfn);
-    ret = xc_evtchn_notify(paging->mem_event.xce_handle,
-                           paging->mem_event.port);
+    if ( ret == 0 ) 
+        ret = xc_evtchn_notify(paging->mem_event.xce_handle,
+                               paging->mem_event.port);
 
  out:
     return ret;
 }
 
 static int xenpaging_populate_page(xenpaging_t *paging,
-    uint64_t *gfn, int fd, int i)
+    xen_pfn_t gfn, int fd, int i)
 {
     xc_interface *xch = paging->xc_handle;
-    unsigned long _gfn;
     void *page;
     int ret;
     unsigned char oom = 0;
 
-    _gfn = *gfn;
-    DPRINTF("populate_page < gfn %lx pageslot %d\n", _gfn, i);
+    DPRINTF("populate_page < gfn %"PRI_xen_pfn" pageslot %d\n", gfn, i);
     do
     {
         /* Tell Xen to allocate a page for the domain */
-        ret = xc_mem_paging_prep(xch, paging->mem_event.domain_id,
-                                 _gfn);
+        ret = xc_mem_paging_prep(xch, paging->mem_event.domain_id, gfn);
         if ( ret != 0 )
         {
             if ( errno == ENOMEM )
             {
                 if ( oom++ == 0 )
-                    DPRINTF("ENOMEM while preparing gfn %lx\n", _gfn);
+                    DPRINTF("ENOMEM while preparing gfn %"PRI_xen_pfn"\n", gfn);
                 sleep(1);
                 continue;
             }
@@ -440,8 +530,7 @@ static int xenpaging_populate_page(xenpaging_t *paging,
     /* Map page */
     ret = -EFAULT;
     page = xc_map_foreign_pages(xch, paging->mem_event.domain_id,
-                                PROT_READ | PROT_WRITE, &_gfn, 1);
-    *gfn = _gfn;
+                                PROT_READ | PROT_WRITE, &gfn, 1);
     if ( page == NULL )
     {
         ERROR("Error mapping page: page is null");
@@ -490,7 +579,7 @@ static int evict_victim(xenpaging_t *paging,
         else
         {
             if ( j++ % 1000 == 0 )
-                if ( xc_mem_paging_flush_ioemu_cache(paging->mem_event.domain_id) )
+                if ( xenpaging_mem_paging_flush_ioemu_cache(paging) )
                     ERROR("Error flushing ioemu cache");
         }
     }
@@ -508,8 +597,6 @@ static int evict_victim(xenpaging_t *paging,
 int main(int argc, char *argv[])
 {
     struct sigaction act;
-    domid_t domain_id;
-    int num_pages;
     xenpaging_t *paging;
     xenpaging_victim_t *victims;
     mem_event_request_t req;
@@ -529,14 +616,8 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    domain_id = atoi(argv[1]);
-    num_pages = atoi(argv[2]);
-
-    /* Seed random-number generator */
-    srand(time(NULL));
-
     /* Initialise domain paging */
-    paging = xenpaging_init(domain_id);
+    paging = xenpaging_init(atoi(argv[1]), atoi(argv[2]));
     if ( paging == NULL )
     {
         fprintf(stderr, "Error initialising paging");
@@ -544,10 +625,10 @@ int main(int argc, char *argv[])
     }
     xch = paging->xc_handle;
 
-    DPRINTF("starting %s %u %d\n", argv[0], domain_id, num_pages);
+    DPRINTF("starting %s %u %d\n", argv[0], paging->mem_event.domain_id, paging->num_pages);
 
     /* Open file */
-    sprintf(filename, "page_cache_%d", domain_id);
+    sprintf(filename, "page_cache_%u", paging->mem_event.domain_id);
     fd = open(filename, open_flags, open_mode);
     if ( fd < 0 )
     {
@@ -555,12 +636,7 @@ int main(int argc, char *argv[])
         return 2;
     }
 
-    if ( num_pages < 0 || num_pages > paging->domain_info->max_pages )
-    {
-        num_pages = paging->domain_info->max_pages;
-        DPRINTF("setting num_pages to %d\n", num_pages);
-    }
-    victims = calloc(num_pages, sizeof(xenpaging_victim_t));
+    victims = calloc(paging->num_pages, sizeof(xenpaging_victim_t));
 
     /* ensure that if we get a signal, we'll do cleanup, then exit */
     act.sa_handler = close_handler;
@@ -571,9 +647,11 @@ int main(int argc, char *argv[])
     sigaction(SIGINT,  &act, NULL);
     sigaction(SIGALRM, &act, NULL);
 
+    /* listen for page-in events to stop pager */
+    create_page_in_thread(paging->mem_event.domain_id, xch);
+
     /* Evict pages */
-    memset(victims, 0, sizeof(xenpaging_victim_t) * num_pages);
-    for ( i = 0; i < num_pages; i++ )
+    for ( i = 0; i < paging->num_pages; i++ )
     {
         rc = evict_victim(paging, &victims[i], fd, i);
         if ( rc == -ENOSPC )
@@ -587,40 +665,35 @@ int main(int argc, char *argv[])
     DPRINTF("%d pages evicted. Done.\n", i);
 
     /* Swap pages in and out */
-    while ( !interrupted )
+    while ( 1 )
     {
         /* Wait for Xen to signal that a page needs paged in */
-        rc = xc_wait_for_event_or_timeout(xch, paging->mem_event.xce_handle, 100);
-        if ( rc < -1 )
+        rc = xenpaging_wait_for_event_or_timeout(paging);
+        if ( rc < 0 )
         {
             ERROR("Error getting event");
             goto out;
         }
-        else if ( rc != -1 )
+        else if ( rc != 0 )
         {
             DPRINTF("Got event from Xen\n");
         }
 
         while ( RING_HAS_UNCONSUMED_REQUESTS(&paging->mem_event.back_ring) )
         {
-            rc = get_request(&paging->mem_event, &req);
-            if ( rc != 0 )
-            {
-                ERROR("Error getting request");
-                goto out;
-            }
+            get_request(&paging->mem_event, &req);
 
             /* Check if the page has already been paged in */
             if ( test_and_clear_bit(req.gfn, paging->bitmap) )
             {
                 /* Find where in the paging file to read from */
-                for ( i = 0; i < num_pages; i++ )
+                for ( i = 0; i < paging->num_pages; i++ )
                 {
                     if ( victims[i].gfn == req.gfn )
                         break;
                 }
     
-                if ( i >= num_pages )
+                if ( i >= paging->num_pages )
                 {
                     DPRINTF("Couldn't find page %"PRIx64"\n", req.gfn);
                     goto out;
@@ -635,37 +708,38 @@ int main(int argc, char *argv[])
                 else
                 {
                     /* Populate the page */
-                    rc = xenpaging_populate_page(paging, &req.gfn, fd, i);
+                    rc = xenpaging_populate_page(paging, req.gfn, fd, i);
                     if ( rc != 0 )
                     {
                         ERROR("Error populating page");
                         goto out;
                     }
-
-                    /* Prepare the response */
-                    rsp.gfn = req.gfn;
-                    rsp.p2mt = req.p2mt;
-                    rsp.vcpu_id = req.vcpu_id;
-                    rsp.flags = req.flags;
-
-                    rc = xenpaging_resume_page(paging, &rsp, 1);
-                    if ( rc != 0 )
-                    {
-                        ERROR("Error resuming page");
-                        goto out;
-                    }
                 }
 
-                /* Evict a new page to replace the one we just paged in */
-                evict_victim(paging, &victims[i], fd, i);
+                /* Prepare the response */
+                rsp.gfn = req.gfn;
+                rsp.vcpu_id = req.vcpu_id;
+                rsp.flags = req.flags;
+
+                rc = xenpaging_resume_page(paging, &rsp, 1);
+                if ( rc != 0 )
+                {
+                    ERROR("Error resuming page");
+                    goto out;
+                }
+
+                /* Evict a new page to replace the one we just paged in,
+                 * or clear this pagefile slot on exit */
+                if ( interrupted )
+                    victims[i].gfn = INVALID_MFN;
+                else
+                    evict_victim(paging, &victims[i], fd, i);
             }
             else
             {
                 DPRINTF("page already populated (domain = %d; vcpu = %d;"
-                        " p2mt = %x;"
                         " gfn = %"PRIx64"; paused = %d)\n",
                         paging->mem_event.domain_id, req.vcpu_id,
-                        req.p2mt,
                         req.gfn, req.flags & MEM_EVENT_FLAG_VCPU_PAUSED);
 
                 /* Tell Xen to resume the vcpu */
@@ -674,7 +748,6 @@ int main(int argc, char *argv[])
                 {
                     /* Prepare the response */
                     rsp.gfn = req.gfn;
-                    rsp.p2mt = req.p2mt;
                     rsp.vcpu_id = req.vcpu_id;
                     rsp.flags = req.flags;
 
@@ -687,11 +760,34 @@ int main(int argc, char *argv[])
                 }
             }
         }
+
+        /* Write all pages back into the guest */
+        if ( interrupted == SIGTERM || interrupted == SIGINT )
+        {
+            for ( i = 0; i < paging->domain_info->max_pages; i++ )
+            {
+                if ( test_bit(i, paging->bitmap) )
+                {
+                    page_in_trigger(i);
+                    break;
+                }
+            }
+            /* If no more pages to process, exit loop */
+            if ( i == paging->domain_info->max_pages )
+                break;
+        }
+        else
+        {
+            /* Exit on any other signal */
+            if ( interrupted )
+                break;
+        }
     }
     DPRINTF("xenpaging got signal %d\n", interrupted);
 
  out:
     close(fd);
+    unlink_pagefile();
     free(victims);
 
     /* Tear down domain paging */
