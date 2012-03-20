@@ -354,6 +354,37 @@ void hvm_do_resume(struct vcpu *v)
     }
 }
 
+static void hvm_init_ioreq_servers(struct domain *d)
+{
+    spin_lock_init(&d->arch.hvm_domain.ioreq_server_lock);
+    d->arch.hvm_domain.nr_ioreq_server = 0;
+}
+
+static int hvm_ioreq_servers_new_vcpu(struct vcpu *v)
+{
+    struct hvm_ioreq_server *s;
+    struct domain *d = v->domain;
+    shared_iopage_t *p;
+    int rc = 0;
+
+    spin_lock(&d->arch.hvm_domain.ioreq_server_lock);
+
+    for ( s = d->arch.hvm_domain.ioreq_server_list; s != NULL; s = s->next )
+    {
+        p = s->ioreq.va;
+        ASSERT(p != NULL);
+
+        rc = alloc_unbound_xen_event_channel(v, s->domid, NULL);
+        if ( rc < 0 )
+            break;
+        p->vcpu_ioreq[v->vcpu_id].vp_eport = rc;
+    }
+
+    spin_unlock(&d->arch.hvm_domain.ioreq_server_lock);
+
+    return (rc < 0) ? rc : 0;
+}
+
 static void hvm_init_ioreq_page(
     struct domain *d, struct hvm_ioreq_page *iorp)
 {
@@ -557,6 +588,59 @@ int hvm_domain_initialise(struct domain *d)
     xfree(d->arch.hvm_domain.params);
     xfree(d->arch.hvm_domain.pbuf);
     return rc;
+}
+
+static void hvm_destroy_ioreq_server(struct domain *d,
+                                     struct hvm_ioreq_server *s)
+{
+    struct hvm_io_range *x;
+    shared_iopage_t *p;
+    int i;
+
+    while ( (x = s->mmio_range_list) != NULL )
+    {
+        s->mmio_range_list = x->next;
+        xfree(x);
+    }
+    while ( (x = s->portio_range_list) != NULL )
+    {
+        s->portio_range_list = x->next;
+        xfree(x);
+    }
+
+    p = s->ioreq.va;
+
+    for ( i = 0; i < MAX_HVM_VCPUS; i++ )
+    {
+        if ( p->vcpu_ioreq[i].vp_eport )
+        {
+            free_xen_event_channel(d->vcpu[i], p->vcpu_ioreq[i].vp_eport);
+        }
+    }
+
+    free_xen_event_channel(d->vcpu[0], s->buf_ioreq_evtchn);
+
+    hvm_destroy_ioreq_page(d, &s->ioreq);
+    hvm_destroy_ioreq_page(d, &s->buf_ioreq);
+
+    xfree(s);
+}
+
+static void hvm_destroy_ioreq_servers(struct domain *d)
+{
+    struct hvm_ioreq_server *s;
+
+    spin_lock(&d->arch.hvm_domain.ioreq_server_lock);
+
+    ASSERT(d->is_dying);
+
+    while ( (s = d->arch.hvm_domain.ioreq_server_list) != NULL )
+    {
+        d->arch.hvm_domain.ioreq_server_list = s->next;
+        hvm_destroy_ioreq_server(d, s);
+    }
+
+    spin_unlock(&d->arch.hvm_domain.ioreq_server_lock);
 }
 
 void hvm_domain_relinquish_resources(struct domain *d)
@@ -3684,6 +3768,278 @@ static int hvm_replace_event_channel(struct vcpu *v, domid_t remote_domid,
     old_port = xchg(p_port, new_port);
     free_xen_event_channel(v, old_port);
     return 0;
+}
+
+static int hvm_alloc_ioreq_server_page(struct domain *d,
+                                       struct hvm_ioreq_server *s,
+                                       struct hvm_ioreq_page *pfn,
+                                       int i)
+{
+    int rc = 0;
+    unsigned long gmfn;
+
+    if (i < 0 || i > 1)
+        return -EINVAL;
+
+    hvm_init_ioreq_page(d, pfn);
+
+    gmfn = d->arch.hvm_domain.params[HVM_PARAM_IO_PFN_FIRST]
+        + (s->id - 1) * 2 + i + 1;
+
+    if (gmfn > d->arch.hvm_domain.params[HVM_PARAM_IO_PFN_LAST])
+        return -EINVAL;
+
+    rc = hvm_set_ioreq_page(d, pfn, gmfn);
+
+    if (!rc && pfn->va == NULL)
+        rc = -ENOMEM;
+
+    return rc;
+}
+
+static int hvmop_register_ioreq_server(
+    struct xen_hvm_register_ioreq_server *a)
+{
+    struct hvm_ioreq_server *s, **pp;
+    struct domain *d;
+    shared_iopage_t *p;
+    struct vcpu *v;
+    int i;
+    int rc = 0;
+
+    if ( current->domain->domain_id == a->domid )
+        return -EINVAL;
+
+    rc = rcu_lock_target_domain_by_id(a->domid, &d);
+    if ( rc != 0 )
+        return rc;
+
+    if ( !is_hvm_domain(d) )
+    {
+        rcu_unlock_domain(d);
+        return -EINVAL;
+    }
+
+    s = xmalloc(struct hvm_ioreq_server);
+    if ( s == NULL )
+    {
+        rcu_unlock_domain(d);
+        return -ENOMEM;
+    }
+    memset(s, 0, sizeof(*s));
+
+    if ( d->is_dying)
+    {
+        rc = -EINVAL;
+        goto register_died;
+    }
+
+    spin_lock(&d->arch.hvm_domain.ioreq_server_lock);
+
+    s->id = d->arch.hvm_domain.nr_ioreq_server + 1;
+    s->domid = current->domain->domain_id;
+
+    /* Initialize shared pages */
+    if ( (rc = hvm_alloc_ioreq_server_page(d, s, &s->ioreq, 0)) )
+        goto register_ioreq;
+    if ( (rc = hvm_alloc_ioreq_server_page(d, s, &s->buf_ioreq, 1)) )
+        goto register_buf_ioreq;
+
+    p = s->ioreq.va;
+
+    for_each_vcpu ( d, v )
+    {
+        rc = alloc_unbound_xen_event_channel(v, s->domid, NULL);
+        if ( rc < 0 )
+            goto register_ports;
+        p->vcpu_ioreq[v->vcpu_id].vp_eport = rc;
+    }
+
+    /* Allocate buffer event channel */
+    rc = alloc_unbound_xen_event_channel(d->vcpu[0], s->domid, NULL);
+
+    if (rc < 0)
+        goto register_ports;
+    s->buf_ioreq_evtchn = rc;
+
+    pp = &d->arch.hvm_domain.ioreq_server_list;
+    while ( *pp != NULL )
+        pp = &(*pp)->next;
+    *pp = s;
+
+    d->arch.hvm_domain.nr_ioreq_server += 1;
+    a->id = s->id;
+
+    spin_unlock(&d->arch.hvm_domain.ioreq_server_lock);
+    rcu_unlock_domain(d);
+
+    goto register_done;
+
+register_ports:
+    p = s->ioreq.va;
+    for ( i = 0; i < MAX_HVM_VCPUS; i++ )
+    {
+        if ( p->vcpu_ioreq[i].vp_eport )
+            free_xen_event_channel(d->vcpu[i], p->vcpu_ioreq[i].vp_eport);
+    }
+    hvm_destroy_ioreq_page(d, &s->buf_ioreq);
+register_buf_ioreq:
+    hvm_destroy_ioreq_page(d, &s->ioreq);
+register_ioreq:
+    spin_unlock(&d->arch.hvm_domain.ioreq_server_lock);
+register_died:
+    xfree(s);
+    rcu_unlock_domain(d);
+register_done:
+    return 0;
+}
+
+static int hvmop_get_ioreq_server_buf_channel(
+    struct xen_hvm_get_ioreq_server_buf_channel *a)
+{
+    struct domain *d;
+    struct hvm_ioreq_server *s;
+    int rc;
+
+    rc = rcu_lock_target_domain_by_id(a->domid, &d);
+
+    if ( rc != 0 )
+        return rc;
+
+    if ( !is_hvm_domain(d) )
+    {
+        rcu_unlock_domain(d);
+        return -EINVAL;
+    }
+
+    spin_lock(&d->arch.hvm_domain.ioreq_server_lock);
+    s = d->arch.hvm_domain.ioreq_server_list;
+
+    while ( (s != NULL) && (s->id != a->id) )
+        s = s->next;
+
+    if ( s == NULL )
+    {
+        spin_unlock(&d->arch.hvm_domain.ioreq_server_lock);
+        rcu_unlock_domain(d);
+        return -ENOENT;
+    }
+
+    a->channel = s->buf_ioreq_evtchn;
+
+    spin_unlock(&d->arch.hvm_domain.ioreq_server_lock);
+    rcu_unlock_domain(d);
+
+    return 0;
+}
+
+static int hvmop_map_io_range_to_ioreq_server(
+    struct xen_hvm_map_io_range_to_ioreq_server *a)
+{
+    struct hvm_ioreq_server *s;
+    struct hvm_io_range *x;
+    struct domain *d;
+    int rc;
+
+    rc = rcu_lock_target_domain_by_id(a->domid, &d);
+    if ( rc != 0 )
+        return rc;
+
+    if ( !is_hvm_domain(d) )
+    {
+        rcu_unlock_domain(d);
+        return -EINVAL;
+    }
+
+    spin_lock(&d->arch.hvm_domain.ioreq_server_lock);
+
+    x = xmalloc(struct hvm_io_range);
+    s = d->arch.hvm_domain.ioreq_server_list;
+    while ( (s != NULL) && (s->id != a->id) )
+        s = s->next;
+    if ( (s == NULL) || (x == NULL) )
+    {
+        xfree(x);
+        spin_unlock(&d->arch.hvm_domain.ioreq_server_lock);
+        rcu_unlock_domain(d);
+        return x ? -ENOENT : -ENOMEM;
+    }
+
+    x->s = a->s;
+    x->e = a->e;
+    if ( a->is_mmio )
+    {
+        x->next = s->mmio_range_list;
+        s->mmio_range_list = x;
+    }
+    else
+    {
+        x->next = s->portio_range_list;
+        s->portio_range_list = x;
+    }
+
+    spin_unlock(&d->arch.hvm_domain.ioreq_server_lock);
+    rcu_unlock_domain(d);
+    return 0;
+}
+
+static int hvmop_unmap_io_range_from_ioreq_server(
+    struct xen_hvm_unmap_io_range_from_ioreq_server *a)
+{
+    struct hvm_ioreq_server *s;
+    struct hvm_io_range *x, **xp;
+    struct domain *d;
+    int rc;
+
+    rc = rcu_lock_target_domain_by_id(a->domid, &d);
+    if ( rc != 0 )
+        return rc;
+
+    if ( !is_hvm_domain(d) )
+    {
+        rcu_unlock_domain(d);
+        return -EINVAL;
+    }
+
+    spin_lock(&d->arch.hvm_domain.ioreq_server_lock);
+
+    s = d->arch.hvm_domain.ioreq_server_list;
+    while ( (s != NULL) && (s->id != a->id) )
+        s = s->next;
+    if ( (s == NULL) )
+    {
+        spin_unlock(&d->arch.hvm_domain.ioreq_server_lock);
+        rcu_unlock_domain(d);
+        return -ENOENT;
+    }
+
+    if ( a->is_mmio )
+    {
+        x = s->mmio_range_list;
+        xp = &s->mmio_range_list;
+    }
+    else
+    {
+        x = s->portio_range_list;
+        xp = &s->portio_range_list;
+    }
+    while ( (x != NULL) && (a->addr < x->s || a->addr > x->e) )
+    {
+      xp = &x->next;
+      x = x->next;
+    }
+    if ( (x != NULL) )
+    {
+      *xp = x->next;
+      xfree(x);
+      rc = 0;
+    }
+    else
+      rc = -ENOENT;
+
+    spin_unlock(&d->arch.hvm_domain.ioreq_server_lock);
+    rcu_unlock_domain(d);
+    return rc;
 }
 
 long do_hvm_op(unsigned long op, XEN_GUEST_HANDLE(void) arg)
