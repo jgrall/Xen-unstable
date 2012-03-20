@@ -23,6 +23,9 @@
 
 #include "../xen.h"
 #include "../trace.h"
+#include "../event_channel.h"
+
+#include "hvm_info_table.h" /* HVM_MAX_VCPUS */
 
 /* Get/set subcommands: extra argument == pointer to xen_hvm_param struct. */
 #define HVMOP_set_param           0
@@ -237,6 +240,53 @@ struct xen_hvm_inject_trap {
 };
 typedef struct xen_hvm_inject_trap xen_hvm_inject_trap_t;
 DEFINE_XEN_GUEST_HANDLE(xen_hvm_inject_trap_t);
+
+#define HVMOP_register_ioreq_server 20
+struct xen_hvm_register_ioreq_server {
+    domid_t domid;  /* IN - domain to be serviced */
+    ioservid_t id;  /* OUT - handle for identifying this server */
+};
+typedef struct xen_hvm_register_ioreq_server xen_hvm_register_ioreq_server_t;
+DEFINE_XEN_GUEST_HANDLE(xen_hvm_register_ioreq_server_t);
+
+#define HVMOP_get_ioreq_server_buf_channel 21
+struct xen_hvm_get_ioreq_server_buf_channel {
+    domid_t domid;	        /* IN - domain to be serviced */
+    ioservid_t id;	        /* IN - handle from HVMOP_register_ioreq_server */
+    evtchn_port_t channel;  /* OUT - buf ioreq channel */
+};
+typedef struct xen_hvm_get_ioreq_server_buf_channel xen_hvm_get_ioreq_server_buf_channel_t;
+DEFINE_XEN_GUEST_HANDLE(xen_hvm_get_ioreq_server_buf_channel_t);
+
+#define HVMOP_map_io_range_to_ioreq_server 22
+struct xen_hvm_map_io_range_to_ioreq_server {
+    domid_t domid;          /* IN - domain to be serviced */
+    int is_mmio;         /* IN - MMIO or port IO? */
+    ioservid_t id;          /* IN - handle from HVMOP_register_ioreq_server */
+    uint64_aligned_t s, e;  /* IN - inclusive start and end of range */
+};
+typedef struct xen_hvm_map_io_range_to_ioreq_server xen_hvm_map_io_range_to_ioreq_server_t;
+DEFINE_XEN_GUEST_HANDLE(xen_hvm_map_io_range_to_ioreq_server_t);
+
+#define HVMOP_unmap_io_range_from_ioreq_server 23
+struct xen_hvm_unmap_io_range_from_ioreq_server {
+    domid_t domid;          /* IN - domain to be serviced */
+    uint8_t is_mmio;        /* IN - MMIO or port IO? */
+    ioservid_t id;          /* IN - handle from HVMOP_register_ioreq_server */
+    uint64_aligned_t addr;  /* IN - address inside the range to remove */
+};
+typedef struct xen_hvm_unmap_io_range_from_ioreq_server xen_hvm_unmap_io_range_from_ioreq_server_t;
+DEFINE_XEN_GUEST_HANDLE(xen_hvm_unmap_io_range_from_ioreq_server_t);
+
+#define HVMOP_register_pcidev 24
+struct xen_hvm_register_pcidev {
+    domid_t domid;	   /* IN - domain to be serviced */
+    ioservid_t id;	   /* IN - handle from HVMOP_register_ioreq_server */
+    uint16_t bdf;	   /* IN - pci */
+};
+typedef struct xen_hvm_register_pcidev xen_hvm_register_pcidev_t;
+DEFINE_XEN_GUEST_HANDLE(xen_hvm_register_pcidev_t);
+
 
 #endif /* defined(__XEN__) || defined(__XEN_TOOLS__) */
 
