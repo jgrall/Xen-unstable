@@ -147,6 +147,10 @@
 #define HVM_PARAM_ACCESS_RING_PFN   28
 #define HVM_PARAM_SHARING_RING_PFN  29
 
-#define HVM_NR_PARAMS          30
+/* Param for ioreq servers */
+#define HVM_PARAM_IO_PFN_FIRST	30
+#define HVM_PARAM_IO_PFN_LAST	31
+
+#define HVM_NR_PARAMS          32
 
 #endif /* __XEN_PUBLIC_HVM_PARAMS_H__ */
