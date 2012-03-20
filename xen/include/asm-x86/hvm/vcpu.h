@@ -125,7 +125,9 @@ struct hvm_vcpu {
     spinlock_t          tm_lock;
     struct list_head    tm_list;
 
-    int                 xen_port;
+    struct hvm_ioreq_page	*ioreq;
+    /* PCI Information */
+    uint32_t		pci_cf8;
 
     bool_t              flag_dr_dirty;
     bool_t              debug_state_latch;

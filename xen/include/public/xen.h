@@ -491,6 +491,7 @@ DEFINE_XEN_GUEST_HANDLE(mmuext_op_t);
 #ifndef __ASSEMBLY__
 
 typedef uint16_t domid_t;
+typedef uint32_t ioservid_t;
 
 /* Domain ids >= DOMID_FIRST_RESERVED cannot be used for ordinary domains. */
 #define DOMID_FIRST_RESERVED (0x7FF0U)
