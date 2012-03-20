@@ -571,8 +571,7 @@ int hvm_domain_initialise(struct domain *d)
 
     register_portio_handler(d, 0xe9, 1, hvm_print_line);
 
-    if ( hvm_init_pci_emul(d) )
-        goto fail2;
+    hvm_init_pci_emul(d);
 
     rc = hvm_funcs.domain_initialise(d);
     if ( rc != 0 )
@@ -650,6 +649,7 @@ void hvm_domain_relinquish_resources(struct domain *d)
 {
     hvm_destroy_ioreq_servers(d);
     hvm_destroy_pci_emul(d);
+    hvm_destroy_ioreq_page(d, &d->arch.hvm_domain.ioreq);
 
     msixtbl_pt_cleanup(d);
 
@@ -3742,21 +3742,6 @@ static int hvmop_flush_tlb_all(void)
     return 0;
 }
 
-static int hvm_replace_event_channel(struct vcpu *v, domid_t remote_domid,
-                                     int *p_port)
-{
-    int old_port, new_port;
-
-    new_port = alloc_unbound_xen_event_channel(v, remote_domid, NULL);
-    if ( new_port < 0 )
-        return new_port;
-
-    /* xchg() ensures that only we call free_xen_event_channel(). */
-    old_port = xchg(p_port, new_port);
-    free_xen_event_channel(v, old_port);
-    return 0;
-}
-
 static int hvm_alloc_ioreq_server_page(struct domain *d,
                                        struct hvm_ioreq_server *s,
                                        struct hvm_ioreq_page *pfn,
@@ -4041,7 +4026,6 @@ long do_hvm_op(unsigned long op, XEN_GUEST_HANDLE(void) arg)
     case HVMOP_get_param:
     {
         struct xen_hvm_param a;
-        struct hvm_ioreq_page *iorp;
         struct domain *d;
         struct vcpu *v;
 
@@ -4069,20 +4053,12 @@ long do_hvm_op(unsigned long op, XEN_GUEST_HANDLE(void) arg)
 
             switch ( a.index )
             {
-            case HVM_PARAM_IOREQ_PFN:
-                iorp = &d->arch.hvm_domain.ioreq;
-                if ( (rc = hvm_set_ioreq_page(d, iorp, a.value)) != 0 )
-                    break;
-                spin_lock(&iorp->lock);
-                if ( iorp->va != NULL )
-                    /* Initialise evtchn port info if VCPUs already created. */
-                    for_each_vcpu ( d, v )
-                        get_ioreq(v)->vp_eport = v->arch.hvm_vcpu.xen_port;
-                spin_unlock(&iorp->lock);
+            case HVM_PARAM_IO_PFN_FIRST:
+                rc = hvm_set_ioreq_page(d, &d->arch.hvm_domain.ioreq, a.value);
                 break;
-            case HVM_PARAM_BUFIOREQ_PFN: 
-                iorp = &d->arch.hvm_domain.buf_ioreq;
-                rc = hvm_set_ioreq_page(d, iorp, a.value);
+            case HVM_PARAM_IO_PFN_LAST:
+                if ( (d->arch.hvm_domain.params[HVM_PARAM_IO_PFN_LAST]) )
+                    rc = -EINVAL;
                 break;
             case HVM_PARAM_CALLBACK_IRQ:
                 hvm_set_callback_via(d, a.value);
@@ -4127,41 +4103,6 @@ long do_hvm_op(unsigned long op, XEN_GUEST_HANDLE(void) arg)
                 domain_unpause(d);
 
                 domctl_lock_release();
-                break;
-            case HVM_PARAM_DM_DOMAIN:
-                /* Not reflexive, as we must domain_pause(). */
-                rc = -EPERM;
-                if ( curr_d == d )
-                    break;
-
-                if ( a.value == DOMID_SELF )
-                    a.value = curr_d->domain_id;
-
-                rc = 0;
-                domain_pause(d); /* safe to change per-vcpu xen_port */
-                if ( d->vcpu[0] )
-                    rc = hvm_replace_event_channel(d->vcpu[0], a.value,
-                             (int *)&d->vcpu[0]->domain->arch.hvm_domain.params
-                                     [HVM_PARAM_BUFIOREQ_EVTCHN]);
-                if ( rc )
-                {
-                    domain_unpause(d);
-                    break;
-                }
-                iorp = &d->arch.hvm_domain.ioreq;
-                for_each_vcpu ( d, v )
-                {
-                    rc = hvm_replace_event_channel(v, a.value,
-                                                   &v->arch.hvm_vcpu.xen_port);
-                    if ( rc )
-                        break;
-
-                    spin_lock(&iorp->lock);
-                    if ( iorp->va != NULL )
-                        get_ioreq(v)->vp_eport = v->arch.hvm_vcpu.xen_port;
-                    spin_unlock(&iorp->lock);
-                }
-                domain_unpause(d);
                 break;
             case HVM_PARAM_ACPI_S_STATE:
                 /* Not reflexive, as we must domain_pause(). */
@@ -4212,9 +4153,6 @@ long do_hvm_op(unsigned long op, XEN_GUEST_HANDLE(void) arg)
                     for_each_vcpu(d, v)
                         if ( rc == 0 )
                             rc = nestedhvm_vcpu_initialise(v);
-                break;
-            case HVM_PARAM_BUFIOREQ_EVTCHN:
-                rc = -EINVAL;
                 break;
             }
 
@@ -4666,6 +4604,80 @@ long do_hvm_op(unsigned long op, XEN_GUEST_HANDLE(void) arg)
 
     param_fail8:
         rcu_unlock_domain(d);
+        break;
+    }
+
+    case HVMOP_register_ioreq_server:
+    {
+        struct xen_hvm_register_ioreq_server a;
+
+        if ( copy_from_guest(&a, arg, 1) )
+            return -EFAULT;
+
+        rc = hvmop_register_ioreq_server(&a);
+        if ( rc != 0 )
+            return rc;
+
+        rc = copy_to_guest(arg, &a, 1) ? -EFAULT : 0;
+        break;
+    }
+
+    case HVMOP_get_ioreq_server_buf_channel:
+    {
+        struct xen_hvm_get_ioreq_server_buf_channel a;
+
+        if ( copy_from_guest(&a, arg, 1) )
+            return -EFAULT;
+
+        rc = hvmop_get_ioreq_server_buf_channel(&a);
+        if ( rc != 0 )
+            return rc;
+
+        rc = copy_to_guest(arg, &a, 1) ? -EFAULT : 0;
+
+        break;
+    }
+
+    case HVMOP_map_io_range_to_ioreq_server:
+    {
+        struct xen_hvm_map_io_range_to_ioreq_server a;
+
+        if ( copy_from_guest(&a, arg, 1) )
+            return -EFAULT;
+
+        rc = hvmop_map_io_range_to_ioreq_server(&a);
+        if ( rc != 0 )
+            return rc;
+
+        break;
+    }
+
+    case HVMOP_unmap_io_range_from_ioreq_server:
+    {
+        struct xen_hvm_unmap_io_range_from_ioreq_server a;
+
+        if ( copy_from_guest(&a, arg, 1) )
+            return -EFAULT;
+
+        rc = hvmop_unmap_io_range_from_ioreq_server(&a);
+        if ( rc != 0 )
+            return rc;
+
+        break;
+    }
+
+    case HVMOP_register_pcidev:
+    {
+        struct xen_hvm_register_pcidev a;
+
+        if ( copy_from_guest(&a, arg, 1) )
+            return -EFAULT;
+
+        rc = hvm_register_pcidev(a.domid, a.id, a.domain,
+                                 a.bus, a.device, a.function);
+        if ( rc != 0 )
+            return rc;
+
         break;
     }
 
