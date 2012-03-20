@@ -28,6 +28,7 @@
 #include <asm/hvm/vioapic.h>
 #include <asm/hvm/io.h>
 #include <xen/hvm/iommu.h>
+#include <xen/hvm/pci_emul.h>
 #include <asm/hvm/viridian.h>
 #include <asm/hvm/vmx/vmcs.h>
 #include <asm/hvm/svm/vmcb.h>
@@ -41,13 +42,35 @@ struct hvm_ioreq_page {
     void *va;
 };
 
+struct hvm_io_range {
+    uint64_t s, e;
+    struct hvm_io_range *next;
+};
+
+struct hvm_ioreq_server {
+    unsigned int id;
+    domid_t domid;
+    struct hvm_io_range *mmio_range_list;
+    struct hvm_io_range *portio_range_list;
+    struct hvm_ioreq_server *next;
+    struct hvm_ioreq_page ioreq;
+    struct hvm_ioreq_page buf_ioreq;
+    unsigned int buf_ioreq_evtchn;
+};
+
 struct hvm_domain {
+    /* Use for the IO handles by Xen */
     struct hvm_ioreq_page  ioreq;
-    struct hvm_ioreq_page  buf_ioreq;
+    struct hvm_ioreq_server *ioreq_server_list;
+    uint32_t		     nr_ioreq_server;
+    spinlock_t               ioreq_server_lock;
 
     struct pl_time         pl_time;
 
     struct hvm_io_handler *io_handler;
+
+    /* PCI Information */
+    struct pci_root_emul pci_root;
 
     /* Lock protects access to irq, vpic and vioapic. */
     spinlock_t             irq_lock;
