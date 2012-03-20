@@ -12,6 +12,7 @@ obj-y += irq.o
 obj-y += mtrr.o
 obj-y += nestedhvm.o
 obj-y += pmtimer.o
+obj-y += pci_emul.o
 obj-y += quirks.o
 obj-y += rtc.o
 obj-y += save.o
