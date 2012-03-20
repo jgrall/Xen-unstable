@@ -578,9 +578,12 @@ int hvm_domain_initialise(struct domain *d)
     rtc_init(d);
 
     hvm_init_ioreq_page(d, &d->arch.hvm_domain.ioreq);
-    hvm_init_ioreq_page(d, &d->arch.hvm_domain.buf_ioreq);
+    hvm_init_ioreq_servers(d);
 
     register_portio_handler(d, 0xe9, 1, hvm_print_line);
+
+    if ( hvm_init_pci_emul(d) )
+        goto fail2;
 
     rc = hvm_funcs.domain_initialise(d);
     if ( rc != 0 )
@@ -659,8 +662,8 @@ void hvm_domain_relinquish_resources(struct domain *d)
     if ( hvm_funcs.nhvm_domain_relinquish_resources )
         hvm_funcs.nhvm_domain_relinquish_resources(d);
 
-    hvm_destroy_ioreq_page(d, &d->arch.hvm_domain.ioreq);
-    hvm_destroy_ioreq_page(d, &d->arch.hvm_domain.buf_ioreq);
+    hvm_destroy_ioreq_servers(d);
+    hvm_destroy_pci_emul(d);
 
     msixtbl_pt_cleanup(d);
 
@@ -1142,7 +1145,6 @@ int hvm_vcpu_initialise(struct vcpu *v)
 {
     int rc;
     struct domain *d = v->domain;
-    domid_t dm_domid = d->arch.hvm_domain.params[HVM_PARAM_DM_DOMAIN];
 
     hvm_asid_flush_vcpu(v);
 
@@ -1156,27 +1158,11 @@ int hvm_vcpu_initialise(struct vcpu *v)
          && (rc = nestedhvm_vcpu_initialise(v)) < 0 ) 
         goto fail3;
 
-    /* Create ioreq event channel. */
-    rc = alloc_unbound_xen_event_channel(v, dm_domid, NULL);
-    if ( rc < 0 )
-        goto fail4;
+    rc = hvm_ioreq_servers_new_vcpu(v);
+    if ( rc != 0 )
+        goto fail3;
 
-    /* Register ioreq event channel. */
-    v->arch.hvm_vcpu.xen_port = rc;
-
-    if ( v->vcpu_id == 0 )
-    {
-        /* Create bufioreq event channel. */
-        rc = alloc_unbound_xen_event_channel(v, dm_domid, NULL);
-        if ( rc < 0 )
-            goto fail2;
-        d->arch.hvm_domain.params[HVM_PARAM_BUFIOREQ_EVTCHN] = rc;
-    }
-
-    spin_lock(&d->arch.hvm_domain.ioreq.lock);
-    if ( d->arch.hvm_domain.ioreq.va != NULL )
-        get_ioreq(v)->vp_eport = v->arch.hvm_vcpu.xen_port;
-    spin_unlock(&d->arch.hvm_domain.ioreq.lock);
+    v->arch.hvm_vcpu.ioreq = &v->domain->arch.hvm_domain.ioreq;
 
     spin_lock_init(&v->arch.hvm_vcpu.tm_lock);
     INIT_LIST_HEAD(&v->arch.hvm_vcpu.tm_list);
