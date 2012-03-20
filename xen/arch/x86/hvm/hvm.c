@@ -1268,14 +1268,15 @@ bool_t hvm_send_assist_req(struct vcpu *v)
         return 0;
     }
 
-    prepare_wait_on_xen_event_channel(v->arch.hvm_vcpu.xen_port);
+    prepare_wait_on_xen_event_channel(p->vp_eport);
 
     /*
      * Following happens /after/ blocking and setting up ioreq contents.
      * prepare_wait_on_xen_event_channel() is an implicit barrier.
      */
     p->state = STATE_IOREQ_READY;
-    notify_via_xen_event_channel(v->domain, v->arch.hvm_vcpu.xen_port);
+
+    notify_via_xen_event_channel(v->domain, p->vp_eport);
 
     return 1;
 }
