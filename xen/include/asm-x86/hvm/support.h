@@ -29,11 +29,29 @@
 
 static inline ioreq_t *get_ioreq(struct vcpu *v)
 {
-    struct domain *d = v->domain;
-    shared_iopage_t *p = d->arch.hvm_domain.ioreq.va;
-    ASSERT((v == current) || spin_is_locked(&d->arch.hvm_domain.ioreq.lock));
-    ASSERT(d->arch.hvm_domain.ioreq.va != NULL);
+    shared_iopage_t *p = v->arch.hvm_vcpu.ioreq->va;
+    ASSERT((v == current) || spin_is_locked(&v->arch.hvm_vcpu.ioreq->lock));
+    ASSERT(v->arch.hvm_vcpu.ioreq->va != NULL);
     return &p->vcpu_ioreq[v->vcpu_id];
+}
+
+static inline void set_ioreq(struct vcpu *v, struct hvm_ioreq_page *page,
+			     ioreq_t *p)
+{
+    ioreq_t *np;
+
+    v->arch.hvm_vcpu.ioreq = page;
+    spin_lock(&v->arch.hvm_vcpu.ioreq->lock);
+    np = get_ioreq(v);
+    np->dir = p->dir;
+    np->data_is_ptr = p->data_is_ptr;
+    np->type = p->type;
+    np->size = p->size;
+    np->addr = p->addr;
+    np->count = p->count;
+    np->df = p->df;
+    np->data = p->data;
+    spin_unlock(&v->arch.hvm_vcpu.ioreq->lock);
 }
 
 #define HVM_DELIVER_NO_ERROR_CODE  -1
