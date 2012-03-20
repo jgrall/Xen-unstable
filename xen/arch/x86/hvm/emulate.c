@@ -49,6 +49,55 @@ static void hvmtrace_io_assist(int is_mmio, ioreq_t *p)
     trace_var(event, 0/*!cycles*/, size, buffer);
 }
 
+static int hvmemul_prepare_assist(ioreq_t *p)
+{
+    struct vcpu *v = current;
+    struct hvm_ioreq_server *s;
+    int i;
+    int sign;
+    uint32_t data = ~0;
+
+    if ( p->type == IOREQ_TYPE_PCI_CONFIG )
+        return X86EMUL_UNHANDLEABLE;
+
+    spin_lock(&v->domain->arch.hvm_domain.ioreq_server_lock);
+    for ( s = v->domain->arch.hvm_domain.ioreq_server_list; s; s = s->next )
+    {
+        struct hvm_io_range *x = (p->type == IOREQ_TYPE_COPY)
+            ? s->mmio_range_list : s->portio_range_list;
+
+        for ( ; x; x = x->next )
+        {
+            if ( (p->addr >= x->s) && (p->addr <= x->e) )
+                goto done_server_scan;
+        }
+    }
+
+    spin_unlock(&v->domain->arch.hvm_domain.ioreq_server_lock);
+
+    sign = p->df ? -1 : 1;
+
+    if ( p->dir != IOREQ_WRITE )
+    {
+        if ( !p->data_is_ptr )
+            p->data = ~0;
+        else
+        {
+            for ( i = 0; i < p->count; i++ )
+                hvm_copy_to_guest_phys(p->data + sign * i * p->size, &data,
+                                       p->size);
+        }
+    }
+
+    return X86EMUL_OKAY;
+
+  done_server_scan:
+    set_ioreq(v, &s->ioreq, p);
+    spin_unlock(&v->domain->arch.hvm_domain.ioreq_server_lock);
+
+    return X86EMUL_UNHANDLEABLE;
+}
+
 static int hvmemul_do_io(
     int is_mmio, paddr_t addr, unsigned long *reps, int size,
     paddr_t ram_gpa, int dir, int df, void *p_data)
@@ -173,6 +222,10 @@ static int hvmemul_do_io(
         (p_data == NULL) ? HVMIO_dispatched : HVMIO_awaiting_completion;
     vio->io_size = size;
 
+    /* Use the default shared page */
+    current->arch.hvm_vcpu.ioreq = &curr->domain->arch.hvm_domain.ioreq;
+    p = get_ioreq(current);
+
     p->dir = dir;
     p->data_is_ptr = value_is_ptr;
     p->type = is_mmio ? IOREQ_TYPE_COPY : IOREQ_TYPE_PIO;
@@ -195,6 +248,9 @@ static int hvmemul_do_io(
     {
         rc = hvm_portio_intercept(p);
     }
+
+    if ( rc == X86EMUL_UNHANDLEABLE )
+        rc = hvmemul_prepare_assist(p);
 
     switch ( rc )
     {
