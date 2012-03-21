@@ -46,28 +46,17 @@
 #include <xen/iocap.h>
 #include <public/hvm/ioreq.h>
 
-int hvm_buffered_io_send(ioreq_t *p)
+static int hvm_buffered_io_send_to_server(ioreq_t *p, struct hvm_ioreq_server *s)
 {
     struct vcpu *v = current;
-    struct hvm_ioreq_page *iorp = &v->domain->arch.hvm_domain.buf_ioreq;
-    buffered_iopage_t *pg = iorp->va;
+    struct hvm_ioreq_page *iorp;
+    buffered_iopage_t *pg;
     buf_ioreq_t bp;
     /* Timeoffset sends 64b data, but no address. Use two consecutive slots. */
     int qw = 0;
 
-    /* Ensure buffered_iopage fits in a page */
-    BUILD_BUG_ON(sizeof(buffered_iopage_t) > PAGE_SIZE);
-
-    /*
-     * Return 0 for the cases we can't deal with:
-     *  - 'addr' is only a 20-bit field, so we cannot address beyond 1MB
-     *  - we cannot buffer accesses to guest memory buffers, as the guest
-     *    may expect the memory buffer to be synchronously accessed
-     *  - the count field is usually used with data_is_ptr and since we don't
-     *    support data_is_ptr we do not waste space for the count field either
-     */
-    if ( (p->addr > 0xffffful) || p->data_is_ptr || (p->count != 1) )
-        return 0;
+    iorp = &s->buf_ioreq;
+    pg = iorp->va;
 
     bp.type = p->type;
     bp.dir  = p->dir;
@@ -119,10 +108,62 @@ int hvm_buffered_io_send(ioreq_t *p)
     pg->write_pointer += qw ? 2 : 1;
 
     notify_via_xen_event_channel(v->domain,
-            v->domain->arch.hvm_domain.params[HVM_PARAM_BUFIOREQ_EVTCHN]);
+                                 s->buf_ioreq_evtchn);
     spin_unlock(&iorp->lock);
     
     return 1;
+}
+
+int hvm_buffered_io_send(ioreq_t *p)
+{
+    struct vcpu *v = current;
+    struct hvm_ioreq_server *s;
+    int rc = 1;
+
+    /* Ensure buffered_iopage fits in a page */
+    BUILD_BUG_ON(sizeof(buffered_iopage_t) > PAGE_SIZE);
+
+    /*
+     * Return 0 for the cases we can't deal with:
+     *  - 'addr' is only a 20-bit field, so we cannot address beyond 1MB
+     *  - we cannot buffer accesses to guest memory buffers, as the guest
+     *    may expect the memory buffer to be synchronously accessed
+     *  - the count field is usually used with data_is_ptr and since we don't
+     *    support data_is_ptr we do not waste space for the count field either
+     */
+    if ( (p->addr > 0xffffful) || p->data_is_ptr || (p->count != 1) )
+        return 0;
+
+    spin_lock(&v->domain->arch.hvm_domain.ioreq_server_lock);
+    if ( p->type == IOREQ_TYPE_TIMEOFFSET )
+    {
+        /* Send TIME OFFSET to all servers */
+        for ( s = v->domain->arch.hvm_domain.ioreq_server_list; s; s = s->next )
+            rc = hvm_buffered_io_send_to_server(p, s) && rc;
+    }
+    else
+    {
+        for ( s = v->domain->arch.hvm_domain.ioreq_server_list; s; s = s->next )
+        {
+            struct hvm_io_range *x = (p->type == IOREQ_TYPE_COPY)
+                ? s->mmio_range_list : s->portio_range_list;
+            for ( ; x; x = x->next )
+            {
+                if ( (p->addr >= x->s) && (p->addr <= x->e) )
+                {
+                    rc = hvm_buffered_io_send_to_server(p, s);
+                    spin_unlock(&v->domain->arch.hvm_domain.ioreq_server_lock);
+
+                    return rc;
+                }
+            }
+        }
+        rc = 0;
+    }
+
+    spin_unlock(&v->domain->arch.hvm_domain.ioreq_server_lock);
+
+    return rc;
 }
 
 void send_timeoffset_req(unsigned long timeoff)
