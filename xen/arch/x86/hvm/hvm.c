@@ -316,16 +316,9 @@ void hvm_migrate_pirqs(struct vcpu *v)
     spin_unlock(&d->event_lock);
 }
 
-void hvm_do_resume(struct vcpu *v)
+static void hvm_wait_on_io(struct vcpu *v, ioreq_t *p)
 {
-    ioreq_t *p;
-
-    pt_restore_timer(v);
-
-    check_wakeup_from_wait();
-
     /* NB. Optimised for common case (p->state == STATE_IOREQ_NONE). */
-    p = get_ioreq(v);
     while ( p->state != STATE_IOREQ_NONE )
     {
         switch ( p->state )
@@ -335,7 +328,7 @@ void hvm_do_resume(struct vcpu *v)
             break;
         case STATE_IOREQ_READY:  /* IOREQ_{READY,INPROCESS} -> IORESP_READY */
         case STATE_IOREQ_INPROCESS:
-            wait_on_xen_event_channel(v->arch.hvm_vcpu.xen_port,
+            wait_on_xen_event_channel(p->vp_eport,
                                       (p->state != STATE_IOREQ_READY) &&
                                       (p->state != STATE_IOREQ_INPROCESS));
             break;
@@ -345,6 +338,36 @@ void hvm_do_resume(struct vcpu *v)
             return; /* bail */
         }
     }
+}
+
+void hvm_do_resume(struct vcpu *v)
+{
+    ioreq_t *p;
+    struct hvm_ioreq_server *s;
+    shared_iopage_t *page;
+
+    pt_restore_timer(v);
+
+    check_wakeup_from_wait();
+
+    p = get_ioreq(v);
+
+    if ( p->type == IOREQ_TYPE_INVALIDATE )
+    {
+        spin_lock(&v->domain->arch.hvm_domain.ioreq_server_lock);
+        /* Wait all servers */
+        for ( s = v->domain->arch.hvm_domain.ioreq_server_list; s; s = s->next )
+        {
+            page = s->ioreq.va;
+            ASSERT((v == current) || spin_is_locked(&s->ioreq.lock));
+            ASSERT(s->ioreq.va != NULL);
+            v->arch.hvm_vcpu.ioreq = &s->ioreq;
+            hvm_wait_on_io(v, &page->vcpu_ioreq[v->vcpu_id]);
+        }
+        spin_unlock(&v->domain->arch.hvm_domain.ioreq_server_lock);
+    }
+    else
+        hvm_wait_on_io(v, p);
 
     /* Inject pending hw/sw trap */
     if ( v->arch.hvm_vcpu.inject_trap.vector != -1 ) 
