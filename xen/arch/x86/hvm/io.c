@@ -150,7 +150,8 @@ void send_timeoffset_req(unsigned long timeoff)
 void send_invalidate_req(void)
 {
     struct vcpu *v = current;
-    ioreq_t *p = get_ioreq(v);
+    ioreq_t p[1];
+    struct hvm_ioreq_server *s;
 
     if ( p->state != STATE_IOREQ_NONE )
     {
@@ -164,8 +165,18 @@ void send_invalidate_req(void)
     p->size = 4;
     p->dir = IOREQ_WRITE;
     p->data = ~0UL; /* flush all */
+    p->count = 0;
+    p->addr = 0;
 
-    (void)hvm_send_assist_req(v);
+    spin_lock(&v->domain->arch.hvm_domain.ioreq_server_lock);
+    for ( s = v->domain->arch.hvm_domain.ioreq_server_list; s; s = s->next )
+    {
+        set_ioreq(v, &s->ioreq, p);
+        (void)hvm_send_assist_req(v);
+    }
+    spin_unlock(&v->domain->arch.hvm_domain.ioreq_server_lock);
+
+    set_ioreq(v, &v->domain->arch.hvm_domain.ioreq, p);
 }
 
 int handle_mmio(void)
