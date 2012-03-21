@@ -33,6 +33,10 @@ void libxl_domain_config_dispose(libxl_domain_config *d_config)
 {
     int i;
 
+    for (i=0; i<d_config->num_dms; i++)
+        libxl_dm_dispose(&d_config->dms[i]);
+    free(d_config->dms);
+
     for (i=0; i<d_config->num_disks; i++)
         libxl_device_disk_dispose(&d_config->disks[i]);
     free(d_config->disks);
@@ -113,6 +117,7 @@ int libxl__domain_build_info_setdefault(libxl__gc *gc,
             case LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN_TRADITIONAL:
                 b_info->u.hvm.bios = LIBXL_BIOS_TYPE_ROMBIOS; break;
             case LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN:
+            case LIBXL_DEVICE_MODEL_VERSION_MULTIPLE_QEMU_XEN:
                 b_info->u.hvm.bios = LIBXL_BIOS_TYPE_SEABIOS; break;
             default:return ERROR_INVAL;
             }
@@ -124,6 +129,7 @@ int libxl__domain_build_info_setdefault(libxl__gc *gc,
                 return ERROR_INVAL;
             break;
         case LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN:
+        case LIBXL_DEVICE_MODEL_VERSION_MULTIPLE_QEMU_XEN:
             if (b_info->u.hvm.bios == LIBXL_BIOS_TYPE_ROMBIOS)
                 return ERROR_INVAL;
             break;
@@ -655,12 +661,24 @@ static int do_domain_create(libxl__gc *gc, libxl_domain_config *d_config,
         libxl_device_vkb_add(ctx, domid, &vkb);
         libxl_device_vkb_dispose(&vkb);
 
-        ret = libxl__create_device_model(gc, domid, d_config,
+        if (d_config->b_info.device_model_version
+            == LIBXL_DEVICE_MODEL_VERSION_MULTIPLE_QEMU_XEN) {
+            ret = libxl__launch_dms(gc, domid, &state, d_config);
+            if (ret <  0) {
+                LIBXL__LOG(ctx, LIBXL__LOG_ERROR,
+                           "failed to launch device models: %d\n", ret);
+                goto error_out;
+            }
+        }
+        else
+        {
+            ret = libxl__create_device_model(gc, domid, ~0, d_config,
                                          &state, &dm_starting);
-        if (ret < 0) {
-            LIBXL__LOG(ctx, LIBXL__LOG_ERROR,
-                       "failed to create device model: %d", ret);
-            goto error_out;
+            if (ret < 0) {
+                LIBXL__LOG(ctx, LIBXL__LOG_ERROR,
+                           "failed to create device model: %d", ret);
+                goto error_out;
+            }
         }
         break;
     }
@@ -701,7 +719,7 @@ static int do_domain_create(libxl__gc *gc, libxl_domain_config *d_config,
     if (dm_starting) {
         if (d_config->b_info.device_model_version
             == LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN) {
-            libxl__qmp_initializations(gc, domid, d_config);
+            libxl__qmp_initializations(gc, domid, d_config, 0);
         }
         ret = libxl__confirm_device_model_startup(gc, &state, dm_starting);
         if (ret < 0) {

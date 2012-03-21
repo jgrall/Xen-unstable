@@ -912,11 +912,20 @@ _hidden int libxl__domain_build(libxl__gc *gc,
                                 uint32_t domid,
                                 libxl__domain_build_state *state);
 
+/* for deamon create */
+_hidden int libxl__launch_dms(libxl__gc *gc,
+                              libxl_domid domid,
+                              libxl__domain_build_state *state,
+                              libxl_domain_config *guest_config);
+_hidden int libxl__destroy_dms(libxl__gc *gc,
+                               libxl_domid domid);
+
 /* for device model creation */
 _hidden const char *libxl__domain_device_model(libxl__gc *gc,
                                         const libxl_domain_build_info *info);
 _hidden int libxl__create_device_model(libxl__gc *gc,
                               int domid,
+                              uint32_t dmid,
                               libxl_domain_config *guest_config,
                               libxl__domain_build_state *state,
                               libxl__spawner_starting **starting_r);

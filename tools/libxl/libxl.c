@@ -1067,7 +1067,8 @@ int libxl_domain_destroy(libxl_ctx *ctx, uint32_t domid)
 
     switch (libxl__domain_type(gc, domid)) {
     case LIBXL_DOMAIN_TYPE_HVM:
-        dm_present = 1;
+        pid = libxl__xs_read(gc, XBT_NULL, libxl__sprintf(gc, "/local/domain/%d/image/device-model-pid", domid));
+        dm_present = (pid != NULL);
         break;
     case LIBXL_DOMAIN_TYPE_PV:
         pid = libxl__xs_read(gc, XBT_NULL, libxl__sprintf(gc, "/local/domain/%d/image/device-model-pid", domid));
@@ -1093,8 +1094,11 @@ int libxl_domain_destroy(libxl_ctx *ctx, uint32_t domid)
         if (libxl__destroy_device_model(gc, domid) < 0)
             LIBXL__LOG(ctx, LIBXL__LOG_ERROR, "libxl__destroy_device_model failed for %d", domid);
 
-        libxl__qmp_cleanup(gc, domid);
+        libxl__qmp_cleanup(gc, domid, 0);
     }
+
+    libxl__destroy_dms(gc, domid);
+
     if (libxl__devices_destroy(gc, domid) < 0)
         LIBXL__LOG(ctx, LIBXL__LOG_ERROR, 
                    "libxl__devices_destroy failed for %d", domid);
