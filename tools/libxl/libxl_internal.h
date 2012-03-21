@@ -1041,7 +1041,8 @@ typedef struct libxl__qmp_handler libxl__qmp_handler;
  *   Return an handler or NULL if there is an error
  */
 _hidden libxl__qmp_handler *libxl__qmp_initialize(libxl__gc *gc,
-                                                  uint32_t domid);
+                                                  uint32_t domid,
+                                                  uint32_t dmid);
 /* ask to QEMU the serial port information and store it in xenstore. */
 _hidden int libxl__qmp_query_serial(libxl__qmp_handler *qmp);
 _hidden int libxl__qmp_pci_add(libxl__gc *gc, int d, libxl_device_pci *pcidev);
@@ -1053,12 +1054,12 @@ _hidden int libxl__qmp_save(libxl__gc *gc, int domid, const char *filename);
 _hidden void libxl__qmp_close(libxl__qmp_handler *qmp);
 /* remove the socket file, if the file has already been removed,
  * nothing happen */
-_hidden void libxl__qmp_cleanup(libxl__gc *gc, uint32_t domid);
+_hidden void libxl__qmp_cleanup(libxl__gc *gc, uint32_t domid, uint32_t deamonid);
 
 /* this helper calls qmp_initialize, query_serial and qmp_close */
 _hidden int libxl__qmp_initializations(libxl__gc *gc, uint32_t domid,
-                                       const libxl_domain_config *guest_config);
-
+                                       const libxl_domain_config *guest_config,
+                                       uint32_t dmid);
 /* from libxl_json */
 #include <yajl/yajl_gen.h>
 
