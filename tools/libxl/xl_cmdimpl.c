@@ -528,7 +528,7 @@ static void parse_config_data(const char *configfile_filename_report,
     const char *buf;
     long l;
     XLU_Config *config;
-    XLU_ConfigList *cpus, *vbds, *nics, *pcis, *cvfbs, *cpuids;
+    XLU_ConfigList *cpus, *vbds, *nics, *pcis, *cvfbs, *cpuids, *dms;
     int pci_power_mgmt = 0;
     int pci_msitranslate = 1;
     int pci_permissive = 0;
@@ -1156,6 +1156,9 @@ skip_vfb:
         } else if (!strcmp(buf, "qemu-xen")) {
             b_info->device_model_version
                 = LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN;
+        } else if (!strcmp(buf, "multiple-qemu-xen") && c_info->type == LIBXL_DOMAIN_TYPE_HVM) {
+            b_info->device_model_version
+                = LIBXL_DEVICE_MODEL_VERSION_MULTIPLE_QEMU_XEN;
         } else {
             fprintf(stderr,
                     "Unknown device_model_version \"%s\" specified\n", buf);
@@ -1181,6 +1184,29 @@ skip_vfb:
             }
         }
     }
+
+    if (b_info->device_model_version
+        == LIBXL_DEVICE_MODEL_VERSION_MULTIPLE_QEMU_XEN) {
+        if (!xlu_cfg_get_list (config, "device_models", &dms, 0, 0)) {
+            d_config->num_dms = 0;
+            d_config->dms = NULL;
+            while ((buf = xlu_cfg_get_listitem (dms, d_config->num_dms))
+                   != NULL) {
+                libxl_dm *dm;
+
+                d_config->dms = (libxl_dm *) realloc (d_config->dms, sizeof (libxl_dm) * (d_config->num_dms + 1));
+                dm = d_config->dms + d_config->num_dms;
+                libxl_dm_init (dm);
+                dm->id = d_config->num_dms + 1;
+                if (xlu_dm_parse(config, buf, dm))
+                    exit(-ERROR_FAIL);
+
+                d_config->num_dms++;
+            }
+            b_info->u.hvm.max_servers = d_config->num_dms;
+        }
+    }
+
 #define parse_extra_args(type)                                            \
     e = xlu_cfg_get_list_as_string_list(config, "device_model_args"#type, \
                                     &b_info->extra##type, 0);            \

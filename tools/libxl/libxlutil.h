@@ -100,6 +100,11 @@ int xlu_pci_parse_bdf(XLU_Config *cfg, libxl_device_pci *pcidev, const char *str
 
 int xlu_vif_parse_rate(XLU_Config *cfg, const char *rate,
                        libxl_device_nic *nic);
+/*
+ * Daemon specification parsing.
+ */
+int xlu_dm_parse(XLU_Config *cfg, const char *spec,
+                 libxl_dm *dm);
 
 #endif /* LIBXLUTIL_H */
 
