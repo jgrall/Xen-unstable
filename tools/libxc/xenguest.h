@@ -228,13 +228,15 @@ struct xc_hvm_build_args {
  * are optional.
  */
 int xc_hvm_build(xc_interface *xch, uint32_t domid,
-                 const struct xc_hvm_build_args *hvm_args);
+                 const struct xc_hvm_build_args *hvm_args,
+                 uint32_t nr_special_pages);
 
 int xc_hvm_build_target_mem(xc_interface *xch,
                             uint32_t domid,
                             int memsize,
                             int target,
-                            const char *image_name);
+                            const char *image_name,
+                            uint32_t nr_special_pages);
 
 int xc_suspend_evtchn_release(xc_interface *xch, xc_evtchn *xce, int domid, int suspend_evtchn);
 

@@ -192,7 +192,8 @@ unsigned long csum_page(void *page)
 __attribute__((weak)) 
     int xc_hvm_build(xc_interface *xch,
                      uint32_t domid,
-                     const struct xc_hvm_build_args *hvm_args)
+                     const struct xc_hvm_build_args *hvm_args,
+                     uint32_t nr_servers)
 {
     errno = ENOSYS;
     return -1;
