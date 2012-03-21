@@ -1632,6 +1632,19 @@ void xc_clear_last_error(xc_interface *xch);
 int xc_set_hvm_param(xc_interface *handle, domid_t dom, int param, unsigned long value);
 int xc_get_hvm_param(xc_interface *handle, domid_t dom, int param, unsigned long *value);
 
+int xc_hvm_register_ioreq_server(xc_interface *xch, domid_t dom, unsigned int *id);
+int xc_hvm_get_ioreq_server_buf_channel(xc_interface *xch, domid_t dom, servid_t id,
+                                        unsigned int *channel);
+int xc_hvm_map_io_range_to_ioreq_server(xc_interface *xch, domid_t dom, unsigned int id,
+                                        char is_mmio, uint64_t start, uint64_t end);
+int xc_hvm_unmap_io_range_from_ioreq_server(xc_interface *xch, domid_t dom, unsigned int id,
+                                            char is_mmio, uint64_t addr);
+/*
+ * Register a PCI device
+ */
+int xc_hvm_register_pcidev(xc_interface *xch, domid_t dom, unsigned int id,
+                           uint16_t bdf);
+
 /* IA64 specific, nvram save */
 int xc_ia64_save_to_nvram(xc_interface *xch, uint32_t dom);
 
