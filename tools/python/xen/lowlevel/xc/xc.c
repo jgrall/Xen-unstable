@@ -984,8 +984,9 @@ static PyObject *pyxc_hvm_build(XcObject *self,
     if ( target == -1 )
         target = memsize;
 
+    // Ugly fix : we must retrieve the number of servers
     if ( xc_hvm_build_target_mem(self->xc_handle, dom, memsize,
-                                 target, image) != 0 )
+                                 target, image, 0) != 0 )
         return pyxc_error_to_exception(self->xc_handle);
 
 #if !defined(__ia64__)
