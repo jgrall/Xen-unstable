@@ -391,6 +391,9 @@ static const char *libxl__domain_firmware(libxl__gc *gc,
         case LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN:
             firmware = "hvmloader";
             break;
+        case LIBXL_DEVICE_MODEL_VERSION_MULTIPLE_QEMU_XEN:
+            firmware = "hvmloader";
+            break;
         default:
             LIBXL__LOG(ctx, LIBXL__LOG_ERROR, "invalid device model version %d",
                        info->device_model_version);
@@ -416,7 +419,8 @@ int libxl__build_hvm(libxl__gc *gc, uint32_t domid,
         domid,
         (info->max_memkb - info->video_memkb) / 1024,
         (info->target_memkb - info->video_memkb) / 1024,
-        firmware);
+        firmware,
+        info->u.hvm.max_servers * 2 + 1);
     if (ret) {
         LIBXL__LOG_ERRNOVAL(ctx, LIBXL__LOG_ERROR, ret, "hvm building failed");
         goto out;

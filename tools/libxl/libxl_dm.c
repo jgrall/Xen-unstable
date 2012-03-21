@@ -308,6 +308,7 @@ static char *dm_spice_options(libxl__gc *gc,
 
 static char ** libxl__build_device_model_args_new(libxl__gc *gc,
                                         const char *dm, int guest_domid,
+                                        uint32_t dmid,
                                         const libxl_domain_config *guest_config,
                                         const libxl__domain_build_state *state)
 {
@@ -325,6 +326,11 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
     int i;
     uint64_t ram_size;
 
+    if (dmid == ~0)
+        dmid = 0;
+    else
+        dmid = guest_config->dms[dmid].id;
+
     dm_args = flexarray_make(16, 1);
     if (!dm_args)
         return NULL;
@@ -333,11 +339,15 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
                       "-xen-domid",
                       libxl__sprintf(gc, "%d", guest_domid), NULL);
 
+    flexarray_append(dm_args, "-xen-dmid");
+    flexarray_append(dm_args,
+                     libxl__sprintf(gc, "%u", dmid));
+
     flexarray_append(dm_args, "-chardev");
     flexarray_append(dm_args,
                      libxl__sprintf(gc, "socket,id=libxl-cmd,"
-                                    "path=%s/qmp-libxl-%d,server,nowait",
-                                    libxl__run_dir_path(), guest_domid));
+                                    "path=%s/qmp-libxl-%u-%u,server,nowait",
+                                    libxl__run_dir_path(), guest_domid, dmid));
 
     flexarray_append(dm_args, "-mon");
     flexarray_append(dm_args, "chardev=libxl-cmd,mode=control");
@@ -456,6 +466,7 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
                 } else {
                     ifname = vifs[i].ifname;
                 }
+                ifname = libxl__sprintf(gc, "%s.%u", ifname, dmid);
                 flexarray_append(dm_args, "-device");
                 flexarray_append(dm_args,
                    libxl__sprintf(gc, "%s,id=nic%d,netdev=net%d,mac=%s",
@@ -572,6 +583,7 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
 
 static char ** libxl__build_device_model_args(libxl__gc *gc,
                                         const char *dm, int guest_domid,
+                                        uint32_t dmid,
                                         const libxl_domain_config *guest_config,
                                         const libxl__domain_build_state *state)
 {
@@ -583,9 +595,10 @@ static char ** libxl__build_device_model_args(libxl__gc *gc,
                                                   guest_domid, guest_config,
                                                   state);
     case LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN:
+    case LIBXL_DEVICE_MODEL_VERSION_MULTIPLE_QEMU_XEN:
         return libxl__build_device_model_args_new(gc, dm,
-                                                  guest_domid, guest_config,
-                                                  state);
+                                                  guest_domid, dmid,
+                                                  guest_config, state);
     default:
         LIBXL__LOG_ERRNO(ctx, LIBXL__LOG_ERROR, "unknown device model version %d",
                          guest_config->b_info.device_model_version);
@@ -747,7 +760,7 @@ static int libxl__create_stubdom(libxl__gc *gc,
     if (ret)
         goto out;
 
-    args = libxl__build_device_model_args(gc, "stubdom-dm", guest_domid,
+    args = libxl__build_device_model_args(gc, "stubdom-dm", guest_domid, 0,
                                           guest_config, d_state);
     if (!args) {
         ret = ERROR_FAIL;
@@ -881,6 +894,7 @@ out:
 
 int libxl__create_device_model(libxl__gc *gc,
                               int domid,
+                              uint32_t dmid,
                               libxl_domain_config *guest_config,
                               libxl__domain_build_state *state,
                               libxl__spawner_starting **starting_r)
@@ -898,13 +912,18 @@ int libxl__create_device_model(libxl__gc *gc,
     char *vm_path;
     char **pass_stuff;
     const char *dm;
+    int i = 0;
 
     if (libxl_defbool_val(b_info->device_model_stubdomain)) {
         rc = libxl__create_stubdom(gc, domid, guest_config, state, starting_r);
         goto out;
     }
 
-    dm = libxl__domain_device_model(gc, b_info);
+    if (dmid == ~0)
+        dm = libxl__domain_device_model(gc, b_info);
+    else
+        dm = guest_config->dms[dmid].path;
+
     if (!dm) {
         rc = ERROR_FAIL;
         goto out;
@@ -915,7 +934,7 @@ int libxl__create_device_model(libxl__gc *gc,
         rc = ERROR_FAIL;
         goto out;
     }
-    args = libxl__build_device_model_args(gc, dm, domid, guest_config, state);
+    args = libxl__build_device_model_args(gc, dm, domid, dmid, guest_config, state);
     if (!args) {
         rc = ERROR_FAIL;
         goto out;
@@ -929,7 +948,11 @@ int libxl__create_device_model(libxl__gc *gc,
         free(path);
     }
 
-    path = libxl__sprintf(gc, "/local/domain/0/device-model/%d", domid);
+    if (dmid == ~0)
+        path = libxl__sprintf(gc, "/local/domain/0/device-model/%d", domid);
+    else
+        path = libxl__sprintf(gc, "/local/domain/0/dms/%u/%u", domid,
+                              guest_config->dms[dmid].id);
     xs_mkdir(ctx->xsh, XBT_NULL, path);
 
     if (b_info->type == LIBXL_DOMAIN_TYPE_HVM &&
@@ -938,8 +961,57 @@ int libxl__create_device_model(libxl__gc *gc,
         libxl__xs_write(gc, XBT_NULL, libxl__sprintf(gc, "%s/disable_pf", path),
                     "%d", !libxl_defbool_val(b_info->u.hvm.xen_platform_pci));
 
+    if (dmid != ~0) {
+        path = libxl__sprintf(gc, "%s/image/dms/%u/pci",
+                              libxl__xs_get_dompath(gc, domid),
+                              guest_config->dms[dmid].id);
+        xs_mkdir(ctx->xsh, XBT_NULL, path);
+
+        if (guest_config->dms[dmid].pcis) {
+            for (i = 0; guest_config->dms[dmid].pcis[i]; i++) {
+                path = xs_get_domain_path(ctx->xsh, domid);
+                path = libxl__sprintf(gc, "%s/image/dms/%u/pci/%u",
+                                      path, guest_config->dms[dmid].id, i);
+                libxl__xs_write(gc, XBT_NULL, path,
+                                "%s", guest_config->dms[dmid].pcis[i]);
+            }
+        }
+
+        path = libxl__sprintf(gc, "%s/image/dms/%u/mmio",
+                              libxl__xs_get_dompath(gc, domid),
+                              guest_config->dms[dmid].id);
+        xs_mkdir(ctx->xsh, XBT_NULL, path);
+
+        if (guest_config->dms[dmid].mmios) {
+            for (i = 0; guest_config->dms[dmid].mmios[i]; i++) {
+                path = xs_get_domain_path(ctx->xsh, domid);
+                path = libxl__sprintf(gc, "%s/image/dms/%u/mmio/%u",
+                                      path, guest_config->dms[dmid].id, i);
+                libxl__xs_write(gc, XBT_NULL, path,
+                                "%s", guest_config->dms[dmid].mmios[i]);
+            }
+        }
+
+        path = libxl__sprintf(gc, "%s/image/dms/%u/pio",
+                              libxl__xs_get_dompath(gc, domid),
+                              guest_config->dms[dmid].id);
+        xs_mkdir(ctx->xsh, XBT_NULL, path);
+
+        if (guest_config->dms[dmid].pios) {
+            for (i = 0; guest_config->dms[dmid].pios[i]; i++) {
+                path = xs_get_domain_path(ctx->xsh, domid);
+                path = libxl__sprintf(gc, "%s/image/dms/%u/pio/%u",
+                                      path, guest_config->dms[dmid].id, i);
+                libxl__xs_write(gc, XBT_NULL, path,
+                                "%s", guest_config->dms[dmid].pios[i]);
+            }
+        }
+    }
+
     libxl_create_logfile(ctx,
-                         libxl__sprintf(gc, "qemu-dm-%s", c_info->name),
+                         libxl__sprintf(gc, "qemu-%s-%s",
+                                        (dmid == ~0) ? "dm" : guest_config->dms[dmid].name,
+                                        c_info->name),
                          &logfile);
     logfile_w = open(logfile, O_WRONLY|O_CREAT|O_APPEND, 0644);
     free(logfile);
@@ -959,7 +1031,15 @@ int libxl__create_device_model(libxl__gc *gc,
 
     p->domid = domid;
     p->dom_path = libxl__xs_get_dompath(gc, domid);
-    p->pid_path = "image/device-model-pid";
+    if (dmid == ~0) {
+        p->pid_path = "image/device-model-pid";
+        p->dmid = 0;
+    }
+    else {
+        p->pid_path = libxl__sprintf(gc, "image/dms/%u-pid", guest_config->dms[dmid].id);
+        p->dmid = guest_config->dms[dmid].id;
+    }
+
     if (!p->dom_path) {
         rc = ERROR_FAIL;
         goto out_close;
@@ -987,8 +1067,8 @@ retry_transaction:
     LIBXL__LOG(CTX, XTL_DEBUG, "Spawning device-model %s with arguments:", dm);
     for (arg = args; *arg; arg++)
         LIBXL__LOG(CTX, XTL_DEBUG, "  %s", *arg);
-
-    rc = libxl__spawn_spawn(gc, p->for_spawn, "device model",
+    path = (dmid == ~0) ? "device model" : guest_config->dms[dmid].name;
+    rc = libxl__spawn_spawn(gc, p->for_spawn, path,
                             libxl_spawner_record_pid, p);
     if (rc < 0)
         goto out_close;
@@ -1014,8 +1094,14 @@ int libxl__confirm_device_model_startup(libxl__gc *gc,
 {
     char *path;
     int domid = starting->domid;
+    uint32_t dmid = starting->dmid;
     int ret, ret2;
-    path = libxl__sprintf(gc, "/local/domain/0/device-model/%d/state", domid);
+
+    if (!dmid)
+        path = libxl__sprintf(gc, "/local/domain/0/device-model/%d/state", domid);
+    else
+        path = libxl__sprintf(gc, "/local/domain/0/dms/%u/%u/state", domid, dmid);
+
     ret = libxl__spawn_confirm_offspring_startup(gc,
                                      LIBXL_DEVICE_MODEL_START_TIMEOUT,
                                      "Device Model", path, "running", starting);
@@ -1128,8 +1214,120 @@ int libxl__create_xenpv_qemu(libxl__gc *gc, uint32_t domid,
                              libxl__domain_build_state *state,
                              libxl__spawner_starting **starting_r)
 {
-    libxl__create_device_model(gc, domid, guest_config, state, starting_r);
+    libxl__create_device_model(gc, domid, ~0, guest_config, state, starting_r);
     return 0;
+}
+
+int libxl__launch_dms(libxl__gc *gc,
+                      libxl_domid domid,
+                      libxl__domain_build_state *state,
+                      libxl_domain_config *guest_config)
+{
+    char *path;
+    libxl_ctx *ctx = libxl__gc_owner(gc);
+    libxl_dm *dm = NULL;
+    int i;
+    libxl__spawner_starting *dm_starting = 0;
+    int ret = 0;
+
+    path = libxl__sprintf(gc, "/local/domain/0/dms/%u", domid);
+    xs_mkdir(ctx->xsh, XBT_NULL, path);
+    path = xs_get_domain_path(ctx->xsh, domid);
+    xs_mkdir(ctx->xsh, XBT_NULL, libxl__sprintf(gc, "%s/image/dms", path));
+    free(path);
+
+    for (i = 0; i < guest_config->num_dms; i++)
+    {
+        dm = &guest_config->dms[i];
+        ret = libxl__create_device_model(gc, domid, i, guest_config,
+                                         state, &dm_starting);
+        if (ret < 0)
+            fprintf(stderr, "Can't launch dm %s\n",
+                    guest_config->dms[i].name);
+        if (dm_starting) {
+            libxl__qmp_initializations(gc, domid, guest_config, dm->id);
+            ret = libxl__confirm_device_model_startup(gc, state, dm_starting);
+            if (ret < 0) {
+                LIBXL__LOG(ctx, LIBXL__LOG_ERROR,
+                           "dm %s did not start: %d",
+                           guest_config->dms[i].name,
+                           ret);
+                break;
+            }
+        }
+    }
+
+    return ret;
+}
+
+static int libxl_destroy_dm(libxl__gc *gc,
+                            libxl_domid domid,
+                            char *dmid)
+{
+    libxl_ctx *ctx = libxl__gc_owner(gc);
+    char *path;
+    char *pid;
+    int ret = 0;
+
+    path = libxl__sprintf(gc, "/local/domain/%u/image/dms/%s-pid",
+                          domid, dmid);
+
+
+    pid = libxl__xs_read(gc, XBT_NULL, path);
+    if (!pid)
+        return ERROR_FAIL;
+
+    ret = kill(atoi(pid), SIGHUP);
+
+    if (ret < 0 && errno == ESRCH) {
+        LIBXL__LOG(ctx, LIBXL__LOG_DEBUG, "Daemon %s already exited", dmid);
+        ret = 0;
+    } else if (ret == 0) {
+        LIBXL__LOG(ctx, LIBXL__LOG_DEBUG, "Daemon %s signaled", dmid);
+        ret = 0;
+    } else {
+        LIBXL__LOG(ctx, LIBXL__LOG_ERROR, "failed to kill Daemon %s [%d]",
+                   dmid, atoi(pid));
+        ret = ERROR_FAIL;
+    }
+
+    if (!ret)
+    {
+        path = libxl__sprintf(gc, "/local/domain/0/dms/%u/%s",
+                             domid, dmid);
+
+        xs_rm(ctx->xsh, XBT_NULL, path);
+    }
+
+    return 0;
+}
+
+int libxl__destroy_dms(libxl__gc *gc,
+                       libxl_domid domid)
+{
+    libxl_ctx *ctx = libxl__gc_owner(gc);
+    int ret = 0;
+    char **dir = NULL;
+    unsigned int n;
+    char *path;
+    unsigned int i = 0;
+
+    path = libxl__sprintf(gc, "/local/domain/0/dms/%u", domid);
+
+    dir = libxl__xs_directory(gc, XBT_NULL, path, &n);
+    if (dir)
+    {
+        for (i = 0; i < n; i++)
+        {
+            if (libxl_destroy_dm(gc, domid, dir[i]))
+                ret = ERROR_FAIL;
+        }
+    }
+
+    if (!ret)
+        xs_rm(ctx->xsh, XBT_NULL, libxl__sprintf(gc, "/local/domain/0/dms/%u", domid));
+
+    return ret;
 }
 
 /*
