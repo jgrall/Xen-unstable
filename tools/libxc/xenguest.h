@@ -216,6 +216,7 @@ struct xc_hvm_build_args {
     uint64_t mem_target;         /* Memory target in bytes. */
     uint64_t mmio_size;          /* Size of the MMIO hole in bytes. */
     const char *image_file_name; /* File name of the image to load. */
+    uint32_t nr_special_pages;   /* Additional special pages for io daemon */
 };
 
 /**
@@ -234,7 +235,8 @@ int xc_hvm_build_target_mem(xc_interface *xch,
                             uint32_t domid,
                             int memsize,
                             int target,
-                            const char *image_name);
+                            const char *image_name,
+                            uint32_t nr_special_pages);
 
 int xc_suspend_evtchn_release(xc_interface *xch, xc_evtchn *xce, int domid, int suspend_evtchn);
 

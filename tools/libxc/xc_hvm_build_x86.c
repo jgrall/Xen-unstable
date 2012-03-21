@@ -41,16 +41,15 @@
 #define SPECIALPAGE_PAGING   0
 #define SPECIALPAGE_ACCESS   1
 #define SPECIALPAGE_SHARING  2
-#define SPECIALPAGE_BUFIOREQ 3
-#define SPECIALPAGE_XENSTORE 4
-#define SPECIALPAGE_IOREQ    5
-#define SPECIALPAGE_IDENT_PT 6
-#define SPECIALPAGE_CONSOLE  7
-#define NR_SPECIAL_PAGES     8
-#define special_pfn(x) (0xff000u - NR_SPECIAL_PAGES + (x))
+#define SPECIALPAGE_XENSTORE 3
+#define SPECIALPAGE_IDENT_PT 4
+#define SPECIALPAGE_CONSOLE  5
+#define NR_SPECIAL_PAGES     6
+#define special_pfn(x, add) (0xff000u - (NR_SPECIAL_PAGES + (add)) + (x))
 
 static void build_hvm_info(void *hvm_info_page, uint64_t mem_size,
-                           uint64_t mmio_start, uint64_t mmio_size)
+                           uint64_t mmio_start, uint64_t mmio_size,
+                           uint32_t nr_special_pages)
 {
     struct hvm_info_table *hvm_info = (struct hvm_info_table *)
         (((unsigned char *)hvm_info_page) + HVM_INFO_OFFSET);
@@ -78,7 +77,7 @@ static void build_hvm_info(void *hvm_info_page, uint64_t mem_size,
     /* Memory parameters. */
     hvm_info->low_mem_pgend = lowmem_end >> PAGE_SHIFT;
     hvm_info->high_mem_pgend = highmem_end >> PAGE_SHIFT;
-    hvm_info->reserved_mem_pgstart = special_pfn(0);
+    hvm_info->reserved_mem_pgstart = special_pfn(0, nr_special_pages);
 
     /* Finish with the checksum. */
     for ( i = 0, sum = 0; i < hvm_info->length; i++ )
@@ -148,6 +147,7 @@ static int setup_guest(xc_interface *xch,
     unsigned long target_pages = args->mem_target >> PAGE_SHIFT;
     uint64_t mmio_start = (1ull << 32) - args->mmio_size;
     uint64_t mmio_size = args->mmio_size;
+    uint32_t nr_special_pages = args->nr_special_pages;
     unsigned long entry_eip, cur_pages, cur_pfn;
     void *hvm_info_page;
     uint32_t *ident_pt;
@@ -341,37 +341,38 @@ static int setup_guest(xc_interface *xch,
               xch, dom, PAGE_SIZE, PROT_READ | PROT_WRITE,
               HVM_INFO_PFN)) == NULL )
         goto error_out;
-    build_hvm_info(hvm_info_page, v_end, mmio_start, mmio_size);
+    build_hvm_info(hvm_info_page, v_end, mmio_start, mmio_size, nr_special_pages);
     munmap(hvm_info_page, PAGE_SIZE);
 
     /* Allocate and clear special pages. */
-    for ( i = 0; i < NR_SPECIAL_PAGES; i++ )
+    for ( i = 0; i < (NR_SPECIAL_PAGES + nr_special_pages); i++ )
     {
-        xen_pfn_t pfn = special_pfn(i);
+        xen_pfn_t pfn = special_pfn(i, nr_special_pages);
         rc = xc_domain_populate_physmap_exact(xch, dom, 1, 0, 0, &pfn);
         if ( rc != 0 )
         {
             PERROR("Could not allocate %d'th special page.", i);
             goto error_out;
         }
-        if ( xc_clear_domain_page(xch, dom, special_pfn(i)) )
+        if ( xc_clear_domain_page(xch, dom, special_pfn(i, nr_special_pages)) )
             goto error_out;
     }
 
     xc_set_hvm_param(xch, dom, HVM_PARAM_STORE_PFN,
-                     special_pfn(SPECIALPAGE_XENSTORE));
-    xc_set_hvm_param(xch, dom, HVM_PARAM_BUFIOREQ_PFN,
-                     special_pfn(SPECIALPAGE_BUFIOREQ));
-    xc_set_hvm_param(xch, dom, HVM_PARAM_IOREQ_PFN,
-                     special_pfn(SPECIALPAGE_IOREQ));
+                     special_pfn(SPECIALPAGE_XENSTORE, nr_special_pages));
     xc_set_hvm_param(xch, dom, HVM_PARAM_CONSOLE_PFN,
-                     special_pfn(SPECIALPAGE_CONSOLE));
+                     special_pfn(SPECIALPAGE_CONSOLE, nr_special_pages));
     xc_set_hvm_param(xch, dom, HVM_PARAM_PAGING_RING_PFN,
-                     special_pfn(SPECIALPAGE_PAGING));
+                     special_pfn(SPECIALPAGE_PAGING, nr_special_pages));
     xc_set_hvm_param(xch, dom, HVM_PARAM_ACCESS_RING_PFN,
-                     special_pfn(SPECIALPAGE_ACCESS));
+                     special_pfn(SPECIALPAGE_ACCESS, nr_special_pages));
     xc_set_hvm_param(xch, dom, HVM_PARAM_SHARING_RING_PFN,
-                     special_pfn(SPECIALPAGE_SHARING));
+                     special_pfn(SPECIALPAGE_SHARING, nr_special_pages));
+    xc_set_hvm_param(xch, dom, HVM_PARAM_IO_PFN_FIRST,
+                     special_pfn(NR_SPECIAL_PAGES, nr_special_pages));
+    xc_set_hvm_param(xch, dom, HVM_PARAM_IO_PFN_LAST,
+                     special_pfn(NR_SPECIAL_PAGES + nr_special_pages - 1,
+                                 nr_special_pages));
 
     /*
      * Identity-map page table is required for running with CR0.PG=0 when
@@ -379,14 +380,14 @@ static int setup_guest(xc_interface *xch,
      */
     if ( (ident_pt = xc_map_foreign_range(
               xch, dom, PAGE_SIZE, PROT_READ | PROT_WRITE,
-              special_pfn(SPECIALPAGE_IDENT_PT))) == NULL )
+              special_pfn(SPECIALPAGE_IDENT_PT, nr_special_pages))) == NULL )
         goto error_out;
     for ( i = 0; i < PAGE_SIZE / sizeof(*ident_pt); i++ )
         ident_pt[i] = ((i << 22) | _PAGE_PRESENT | _PAGE_RW | _PAGE_USER |
                        _PAGE_ACCESSED | _PAGE_DIRTY | _PAGE_PSE);
     munmap(ident_pt, PAGE_SIZE);
     xc_set_hvm_param(xch, dom, HVM_PARAM_IDENT_PT,
-                     special_pfn(SPECIALPAGE_IDENT_PT) << PAGE_SHIFT);
+                     special_pfn(SPECIALPAGE_IDENT_PT, nr_special_pages) << PAGE_SHIFT);
 
     /* Insert JMP <rel32> instruction at address 0x0 to reach entry point. */
     entry_eip = elf_uval(&elf, elf.ehdr, e_entry);
@@ -454,16 +455,18 @@ int xc_hvm_build(xc_interface *xch, uint32_t domid,
  * If target == memsize, pages are populated normally.
  */
 int xc_hvm_build_target_mem(xc_interface *xch,
-                           uint32_t domid,
-                           int memsize,
-                           int target,
-                           const char *image_name)
+                            uint32_t domid,
+                            int memsize,
+                            int target,
+                            const char *image_name,
+                            uint32_t nr_special_pages)
 {
     struct xc_hvm_build_args args = {};
 
     args.mem_size = (uint64_t)memsize << 20;
     args.mem_target = (uint64_t)target << 20;
     args.image_file_name = image_name;
+    args.nr_special_pages = nr_special_pages;
 
     return xc_hvm_build(xch, domid, &args);
 }
