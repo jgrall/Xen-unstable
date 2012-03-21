@@ -37,6 +37,7 @@ libxl_domain_type = Enumeration("domain_type", [
 libxl_device_model_version = Enumeration("device_model_version", [
     (1, "QEMU_XEN_TRADITIONAL"), # Historical qemu-xen device model (qemu-dm)
     (2, "QEMU_XEN"),             # Upstream based qemu-xen device model
+    (3, "MULTIPLE_QEMU_XEN"),    # Handle multiple dm
     ])
 
 libxl_console_type = Enumeration("console_type", [
@@ -235,6 +236,15 @@ libxl_sched_params = Struct("sched_params",[
     ("extratime",    integer),
     ], dir=DIR_IN)
 
+libxl_dm = Struct("dm", [
+    ("id",           uint32),
+    ("name",         string),
+    ("path",         string),
+    ("pcis",         libxl_string_list),
+    ("mmios",        libxl_string_list),
+    ("pios",         libxl_string_list),
+    ])
+
 # Instances of libxl_file_reference contained in this struct which
 # have been mapped (with libxl_file_reference_map) will be unmapped
 # by libxl_domain_build/restore. If either of these are never called
@@ -304,6 +314,7 @@ libxl_domain_build_info = Struct("domain_build_info",[
                                        ("usbdevice",        string),
                                        ("soundhw",          string),
                                        ("xen_platform_pci", libxl_defbool),
+                                       ("max_servers",     integer),
                                        ])),
                  ("pv", Struct(None, [("kernel", libxl_file_reference),
                                       ("slack_memkb", MemKB),

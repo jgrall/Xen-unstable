@@ -786,6 +786,7 @@ typedef struct {
     char *dom_path; /* from libxl_malloc, only for libxl_spawner_record_pid */
     const char *pid_path; /* only for libxl_spawner_record_pid */
     int domid;
+    uint32_t dmid;
     libxl__spawn_starting *for_spawn;
 } libxl__spawner_starting;
 
