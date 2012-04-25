@@ -597,6 +597,23 @@ static void parse_config_data(const char *configfile_filename_report,
     libxl_domain_build_info_init_type(b_info, c_info->type);
 
     /* the following is the actual config parsing with overriding values in the structures */
+    if (!xlu_cfg_get_long (config, "cpu_weight", &l, 0))
+        b_info->sched_params.weight = l;
+    if (!xlu_cfg_get_long (config, "cap", &l, 0))
+        b_info->sched_params.cap = l;
+    if (!xlu_cfg_get_long (config, "tslice_ms", &l, 0))
+        b_info->sched_params.tslice_ms = l;
+    if (!xlu_cfg_get_long (config, "ratelimit_us", &l, 0))
+        b_info->sched_params.ratelimit_us = l;
+    if (!xlu_cfg_get_long (config, "period", &l, 0))
+        b_info->sched_params.period = l;
+    if (!xlu_cfg_get_long (config, "slice", &l, 0))
+        b_info->sched_params.period = l;
+    if (!xlu_cfg_get_long (config, "latency", &l, 0))
+        b_info->sched_params.period = l;
+    if (!xlu_cfg_get_long (config, "extratime", &l, 0))
+        b_info->sched_params.period = l;
+
     if (!xlu_cfg_get_long (config, "vcpus", &l, 0)) {
         b_info->max_vcpus = l;
         b_info->cur_vcpus = (1 << l) - 1;
@@ -2464,7 +2481,7 @@ static void list_domains_details(const libxl_dominfo *info, int nb_domain)
         if (rc)
             continue;
         CHK_ERRNO(asprintf(&config_file, "<domid %d data>", info[i].domid));
-        memset(&d_config, 0x00, sizeof(d_config));
+        libxl_domain_config_init(&d_config);
         parse_config_data(config_file, (char *)data, len, &d_config);
         printf_info(default_output_format, info[i].domid, &d_config);
         libxl_domain_config_dispose(&d_config);
@@ -3546,7 +3563,7 @@ int main_config_update(int argc, char **argv)
         exit(1);
     }
 
-    memset(&d_config, 0x00, sizeof(d_config));
+    libxl_domain_config_init(&d_config);
 
     parse_config_data(filename, config_data, config_len, &d_config);
 
