@@ -16,11 +16,13 @@ static int handle_config_space(int dir, uint32_t port, uint32_t bytes,
     int rc = X86EMUL_UNHANDLEABLE;
     struct vcpu *v = current;
 
-    if (port == 0xcf8)
+    if (port == 0xcf8 && bytes == 4)
     {
         v->arch.hvm_vcpu.pci_cf8 = *val;
         return X86EMUL_OKAY;
     }
+    else if (port < 0xcfc)
+        return X86EMUL_UNHANDLEABLE;
 
     spin_lock(&v->domain->arch.hvm_domain.pci_root.pci_lock);
     spin_lock(&v->domain->arch.hvm_domain.ioreq_server_lock);
@@ -75,14 +77,14 @@ int hvm_register_pcidev(domid_t domid, ioservid_t id, u16 bdf)
     while ((s != NULL) && (s->id != id))
         s = s->next;
 
+    spin_unlock(&d->arch.hvm_domain.ioreq_server_lock);
+
     if (s == NULL)
     {
-        gdprintk(XENLOG_ERR, "Cannot find server\n");
+        gdprintk(XENLOG_ERR, "Cannot find server %u\n", id);
         rc = -ENOENT;
-        goto create_end;
+        goto fail;
     }
-
-    spin_unlock(&d->arch.hvm_domain.ioreq_server_lock);
 
     spin_lock(&d->arch.hvm_domain.pci_root.pci_lock);
 
@@ -105,6 +107,7 @@ int hvm_register_pcidev(domid_t domid, ioservid_t id, u16 bdf)
 
 create_end:
     spin_unlock(&d->arch.hvm_domain.pci_root.pci_lock);
+fail:
     rcu_unlock_domain(d);
 
     return rc;
