@@ -4209,9 +4209,6 @@ long do_hvm_op(unsigned long op, XEN_GUEST_HANDLE_PARAM(void) arg)
                         if ( rc == 0 )
                             rc = nestedhvm_vcpu_initialise(v);
                 break;
-            case HVM_PARAM_BUFIOREQ_EVTCHN:
-                rc = -EINVAL;
-                break;
             }
 
             if ( rc == 0 ) 
