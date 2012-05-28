@@ -41,12 +41,10 @@
 #define SPECIALPAGE_PAGING   0
 #define SPECIALPAGE_ACCESS   1
 #define SPECIALPAGE_SHARING  2
-#define SPECIALPAGE_BUFIOREQ 3
-#define SPECIALPAGE_XENSTORE 4
-#define SPECIALPAGE_IOREQ    5
-#define SPECIALPAGE_IDENT_PT 6
-#define SPECIALPAGE_CONSOLE  7
-#define NR_SPECIAL_PAGES     8
+#define SPECIALPAGE_XENSTORE 3
+#define SPECIALPAGE_IDENT_PT 4
+#define SPECIALPAGE_CONSOLE  5
+#define NR_SPECIAL_PAGES     6
 #define special_pfn(x, add) (0xff000u - (NR_SPECIAL_PAGES + (add)) + (x))
 
 static void build_hvm_info(void *hvm_info_page, uint64_t mem_size,
@@ -142,14 +140,14 @@ static int check_mmio_hole(uint64_t start, uint64_t memsize,
 
 static int setup_guest(xc_interface *xch,
                        uint32_t dom, const struct xc_hvm_build_args *args,
-                       char *image, unsigned long image_size,
-                       uint32_t nr_special_pages)
+                       char *image, unsigned long image_size)
 {
     xen_pfn_t *page_array = NULL;
     unsigned long i, nr_pages = args->mem_size >> PAGE_SHIFT;
     unsigned long target_pages = args->mem_target >> PAGE_SHIFT;
     uint64_t mmio_start = (1ull << 32) - args->mmio_size;
     uint64_t mmio_size = args->mmio_size;
+    uint32_t nr_special_pages = args->nr_special_pages;
     unsigned long entry_eip, cur_pages, cur_pfn;
     void *hvm_info_page;
     uint32_t *ident_pt;
@@ -355,10 +353,6 @@ static int setup_guest(xc_interface *xch,
 
     xc_set_hvm_param(xch, dom, HVM_PARAM_STORE_PFN,
                      special_pfn(SPECIALPAGE_XENSTORE, nr_special_pages));
-    xc_set_hvm_param(xch, dom, HVM_PARAM_BUFIOREQ_PFN,
-                     special_pfn(SPECIALPAGE_BUFIOREQ, nr_special_pages));
-    xc_set_hvm_param(xch, dom, HVM_PARAM_IOREQ_PFN,
-                     special_pfn(SPECIALPAGE_IOREQ, nr_special_pages));
     xc_set_hvm_param(xch, dom, HVM_PARAM_CONSOLE_PFN,
                      special_pfn(SPECIALPAGE_CONSOLE, nr_special_pages));
     xc_set_hvm_param(xch, dom, HVM_PARAM_PAGING_RING_PFN,
@@ -413,8 +407,7 @@ static int setup_guest(xc_interface *xch,
  * Create a domain for a virtualized Linux, using files/filenames.
  */
 int xc_hvm_build(xc_interface *xch, uint32_t domid,
-                 const struct xc_hvm_build_args *hvm_args,
-                 uint32_t nr_special_pages)
+                 const struct xc_hvm_build_args *hvm_args)
 {
     struct xc_hvm_build_args args = *hvm_args;
     void *image;
@@ -440,7 +433,7 @@ int xc_hvm_build(xc_interface *xch, uint32_t domid,
     if ( image == NULL )
         return -1;
 
-    sts = setup_guest(xch, domid, &args, image, image_size, nr_special_pages);
+    sts = setup_guest(xch, domid, &args, image, image_size);
 
     free(image);
 
@@ -466,8 +459,9 @@ int xc_hvm_build_target_mem(xc_interface *xch,
     args.mem_size = (uint64_t)memsize << 20;
     args.mem_target = (uint64_t)target << 20;
     args.image_file_name = image_name;
+    args.nr_special_pages = nr_special_pages;
 
-    return xc_hvm_build(xch, domid, &args, nr_special_pages);
+    return xc_hvm_build(xch, domid, &args);
 }
 
 /*

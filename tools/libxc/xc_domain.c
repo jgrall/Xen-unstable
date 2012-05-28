@@ -1514,14 +1514,16 @@ int xc_domain_set_virq_handler(xc_interface *xch, uint32_t domid, int virq)
     return do_domctl(xch, &domctl);
 }
 
-int xc_hvm_register_ioreq_server(xc_interface *xch, domid_t dom, servid_t *id)
+ioservid_or_error_t xc_hvm_register_ioreq_server(xc_interface *xch,
+                                                 domid_t dom)
 {
     DECLARE_HYPERCALL;
     DECLARE_HYPERCALL_BUFFER(xen_hvm_register_ioreq_server_t, arg);
-    int rc = -1;
+    ioservid_or_error_t rc = -1;
 
     arg = xc_hypercall_buffer_alloc(xch, arg, sizeof (*arg));
-    if (!arg) {
+    if ( !arg )
+    {
         PERROR("Could not allocate memory for xc_hvm_register_ioreq_server hypercall");
         goto out;
     }
@@ -1532,22 +1534,25 @@ int xc_hvm_register_ioreq_server(xc_interface *xch, domid_t dom, servid_t *id)
 
     arg->domid = dom;
     rc = do_xen_hypercall(xch, &hypercall);
-    *id = arg->id;
+    if ( !rc )
+        rc = arg->id;
 
     xc_hypercall_buffer_free(xch, arg);
 out:
     return rc;
 }
 
-int xc_hvm_get_ioreq_server_buf_channel(xc_interface *xch, domid_t dom, servid_t id,
-                                        unsigned int *channel)
+evtchn_port_or_error_t xc_hvm_get_ioreq_server_buf_channel(xc_interface *xch,
+                                                           domid_t dom,
+                                                           ioservid_t id)
 {
     DECLARE_HYPERCALL;
     DECLARE_HYPERCALL_BUFFER(xen_hvm_get_ioreq_server_buf_channel_t, arg);
-    int rc = -1;
+    evtchn_port_or_error_t rc = -1;
 
     arg = xc_hypercall_buffer_alloc(xch, arg, sizeof (*arg));
-    if (!arg) {
+    if ( !arg )
+    {
         PERROR("Could not allocate memory for xc_hvm_get_ioreq_servr_buf_channel");
         goto out;
     }
@@ -1559,7 +1564,9 @@ int xc_hvm_get_ioreq_server_buf_channel(xc_interface *xch, domid_t dom, servid_t
     arg->domid = dom;
     arg->id = id;
     rc = do_xen_hypercall(xch, &hypercall);
-    *channel = arg->channel;
+
+    if ( !rc )
+        rc = arg->channel;
 
     xc_hypercall_buffer_free(xch, arg);
 
@@ -1567,15 +1574,17 @@ out:
     return rc;
 }
 
-int xc_hvm_map_io_range_to_ioreq_server(xc_interface *xch, domid_t dom, servid_t id,
-                                        char is_mmio, uint64_t start, uint64_t end)
+int xc_hvm_map_io_range_to_ioreq_server(xc_interface *xch, domid_t dom,
+                                        ioservid_t id, int is_mmio,
+                                        uint64_t start, uint64_t end)
 {
     DECLARE_HYPERCALL;
     DECLARE_HYPERCALL_BUFFER(xen_hvm_map_io_range_to_ioreq_server_t, arg);
     int rc = -1;
 
     arg = xc_hypercall_buffer_alloc(xch, arg, sizeof (*arg));
-    if (!arg) {
+    if ( !arg )
+    {
         PERROR("Could not allocate memory for xc_hvm_map_io_range_to_ioreq_server hypercall");
         goto out;
     }
@@ -1597,15 +1606,17 @@ out:
     return rc;
 }
 
-int xc_hvm_unmap_io_range_from_ioreq_server(xc_interface *xch, domid_t dom, servid_t id,
-                                            char is_mmio, uint64_t addr)
+int xc_hvm_unmap_io_range_from_ioreq_server(xc_interface *xch, domid_t dom,
+                                            ioservid_t id, int is_mmio,
+                                            uint64_t addr)
 {
     DECLARE_HYPERCALL;
     DECLARE_HYPERCALL_BUFFER(xen_hvm_unmap_io_range_from_ioreq_server_t, arg);
     int rc = -1;
 
     arg = xc_hypercall_buffer_alloc(xch, arg, sizeof (*arg));
-    if (!arg) {
+    if ( !arg )
+    {
         PERROR("Could not allocate memory for xc_hvm_unmap_io_range_from_ioreq_server hypercall");
         goto out;
     }
@@ -1625,7 +1636,7 @@ out:
     return rc;
 }
 
-int xc_hvm_register_pcidev(xc_interface *xch, domid_t dom, servid_t id,
+int xc_hvm_register_pcidev(xc_interface *xch, domid_t dom, ioservid_t id,
                            uint16_t bdf)
 {
     DECLARE_HYPERCALL;
@@ -1633,7 +1644,7 @@ int xc_hvm_register_pcidev(xc_interface *xch, domid_t dom, servid_t id,
     int rc = -1;
 
     arg = xc_hypercall_buffer_alloc(xch, arg, sizeof (*arg));
-    if (!arg)
+    if ( !arg )
     {
         PERROR("Could not allocate memory for xc_hvm_create_pci hypercall");
         goto out;
