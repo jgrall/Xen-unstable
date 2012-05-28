@@ -422,7 +422,8 @@ int libxl__build_hvm(libxl__gc *gc, uint32_t domid,
         domid,
         (info->max_memkb - info->video_memkb) / 1024,
         (info->target_memkb - info->video_memkb) / 1024,
-        firmware);
+        firmware,
+        info->u.hvm.max_servers * 2 + 1);
     if (ret) {
         LIBXL__LOG_ERRNOVAL(ctx, LIBXL__LOG_ERROR, ret, "hvm building failed");
         goto out;
@@ -440,12 +441,12 @@ out:
     return rc;
 }
 
-int libxl__qemu_traditional_cmd(libxl__gc *gc, uint32_t domid,
-                                const char *cmd)
+int libxl__qemu_traditional_cmd(libxl__gc *gc, libxl_domid domid,
+                                libxl_dmid dmid, const char *cmd)
 {
     char *path = NULL;
-    path = libxl__sprintf(gc, "/local/domain/0/device-model/%d/command",
-                          domid);
+    path = libxl__sprintf(gc, "/local/domain/0/dms/%u/%u/command",
+                          domid, dmid);
     return libxl__xs_write(gc, XBT_NULL, path, "%s", cmd);
 }
 
@@ -993,12 +994,13 @@ out:
     return rc;
 }
 
-int libxl__domain_save_device_model(libxl__gc *gc, uint32_t domid, int fd)
+int libxl__domain_save_device_model(libxl__gc *gc, libxl_domid domid,
+                                    libxl_dmid dmid, int fd)
 {
     libxl_ctx *ctx = libxl__gc_owner(gc);
     int ret, fd2 = -1, c;
     char buf[1024];
-    const char *filename = libxl__device_model_savefile(gc, domid);
+    const char *filename = libxl__device_model_savefile(gc, domid, 0);
     struct stat st;
     uint32_t qemu_state_len;
 

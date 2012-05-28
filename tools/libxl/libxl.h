@@ -299,6 +299,7 @@ void libxl_cpuid_dispose(libxl_cpuid_policy_list *cpuid_list);
 #define LIBXL_PCI_FUNC_ALL (~0U)
 
 typedef uint32_t libxl_domid;
+typedef uint32_t libxl_dmid;
 
 /*
  * Formatting Enumerations.
@@ -475,9 +476,9 @@ typedef struct {
 typedef struct {
     libxl_domain_create_info c_info;
     libxl_domain_build_info b_info;
-
     int num_disks, num_vifs, num_pcidevs, num_vfbs, num_vkbs;
-
+    int num_dms;
+    libxl_dm *dms;
     libxl_device_disk *disks;
     libxl_device_nic *vifs;
     libxl_device_pci *pcidevs;

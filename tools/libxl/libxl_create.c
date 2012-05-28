@@ -34,6 +34,10 @@ void libxl_domain_config_dispose(libxl_domain_config *d_config)
 {
     int i;
 
+    for (i=0; i<d_config->num_dms; i++)
+        libxl_dm_dispose(&d_config->dms[i]);
+    free(d_config->dms);
+
     for (i=0; i<d_config->num_disks; i++)
         libxl_device_disk_dispose(&d_config->disks[i]);
     free(d_config->disks);
@@ -86,13 +90,16 @@ int libxl__domain_build_info_setdefault(libxl__gc *gc,
             b_info->device_model_version =
                 LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN_TRADITIONAL;
         else {
-            const char *dm;
-            int rc;
+//            const char *dm;
+            int rc = 0;
 
             b_info->device_model_version =
                 LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN;
-            dm = libxl__domain_device_model(gc, b_info);
+#if 0
+            /* TO FIX */
+            dm = libxl__domain_device_model(gc, 0, b_info);
             rc = access(dm, X_OK);
+#endif
             if (rc < 0) {
                 /* qemu-xen unavailable, use qemu-xen-traditional */
                 if (errno == ENOENT) {

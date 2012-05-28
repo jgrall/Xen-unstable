@@ -841,6 +841,8 @@ _hidden int libxl__domain_create_info_setdefault(libxl__gc *gc,
                                         libxl_domain_create_info *c_info);
 _hidden int libxl__domain_build_info_setdefault(libxl__gc *gc,
                                         libxl_domain_build_info *b_info);
+_hidden int libxl__dm_setdefault(libxl__gc *gc,
+                                 libxl_dm *dm);
 _hidden int libxl__device_disk_setdefault(libxl__gc *gc,
                                           libxl_device_disk *disk);
 _hidden int libxl__device_nic_setdefault(libxl__gc *gc, libxl_device_nic *nic);
@@ -1225,8 +1227,6 @@ _hidden int libxl__wait_for_device_model(libxl__gc *gc,
                                                       void *userdata),
                                 void *check_callback_userdata);
 
-_hidden int libxl__destroy_device_model(libxl__gc *gc, uint32_t domid);
-
 _hidden const libxl_vnc_info *libxl__dm_vnc(const libxl_domain_config *g_cfg);
 
 _hidden char *libxl__abs_path(libxl__gc *gc, const char *s, const char *path);
@@ -1332,7 +1332,8 @@ typedef struct libxl__qmp_handler libxl__qmp_handler;
  *   Return an handler or NULL if there is an error
  */
 _hidden libxl__qmp_handler *libxl__qmp_initialize(libxl__gc *gc,
-                                                  uint32_t domid);
+                                                  uint32_t domid,
+                                                  uint32_t dmid);
 /* ask to QEMU the serial port information and store it in xenstore. */
 _hidden int libxl__qmp_query_serial(libxl__qmp_handler *qmp);
 _hidden int libxl__qmp_pci_add(libxl__gc *gc, int d, libxl_device_pci *pcidev);

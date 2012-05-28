@@ -748,11 +748,13 @@ int libxl_domain_unpause(libxl_ctx *ctx, uint32_t domid)
     int ret, rc = 0;
 
     if (LIBXL__DOMAIN_IS_TYPE(gc,  domid, HVM)) {
-        path = libxl__sprintf(gc, "/local/domain/0/device-model/%d/state", domid);
+        /* FIXME: need to be fix for multiple device models */
+        path = libxl__sprintf(gc, "/local/domain/0/dms/%u/%u/state",
+                              domid, 0);
         state = libxl__xs_read(gc, XBT_NULL, path);
         if (state != NULL && !strcmp(state, "paused")) {
-            libxl__qemu_traditional_cmd(gc, domid, "continue");
-            libxl__wait_for_device_model(gc, domid, "running",
+            libxl__qemu_traditional_cmd(gc, domid, 0, "continue");
+            libxl__wait_for_device_model(gc, domid, 0, "running",
                                          NULL, NULL, NULL);
         }
     }
@@ -1151,8 +1153,7 @@ int libxl_domain_destroy(libxl_ctx *ctx, uint32_t domid)
     GC_INIT(ctx);
     char *dom_path;
     char *vm_path;
-    char *pid;
-    int rc, dm_present;
+    int rc;
 
     rc = libxl_domain_info(ctx, NULL, domid);
     switch(rc) {
@@ -1162,18 +1163,6 @@ int libxl_domain_destroy(libxl_ctx *ctx, uint32_t domid)
         LIBXL__LOG(ctx, LIBXL__LOG_ERROR, "non-existant domain %d", domid);
     default:
         return rc;
-    }
-
-    switch (libxl__domain_type(gc, domid)) {
-    case LIBXL_DOMAIN_TYPE_HVM:
-        dm_present = 1;
-        break;
-    case LIBXL_DOMAIN_TYPE_PV:
-        pid = libxl__xs_read(gc, XBT_NULL, libxl__sprintf(gc, "/local/domain/%d/image/device-model-pid", domid));
-        dm_present = (pid != NULL);
-        break;
-    default:
-        abort();
     }
 
     dom_path = libxl__xs_get_dompath(gc, domid);
@@ -1188,12 +1177,11 @@ int libxl_domain_destroy(libxl_ctx *ctx, uint32_t domid)
     if (rc < 0) {
         LIBXL__LOG_ERRNOVAL(ctx, LIBXL__LOG_ERROR, rc, "xc_domain_pause failed for %d", domid);
     }
-    if (dm_present) {
-        if (libxl__destroy_device_model(gc, domid) < 0)
-            LIBXL__LOG(ctx, LIBXL__LOG_ERROR, "libxl__destroy_device_model failed for %d", domid);
 
-        libxl__qmp_cleanup(gc, domid);
-    }
+    if (libxl__destroy_device_models(gc, domid) < 0)
+        LIBXL__LOG(ctx, LIBXL__LOG_ERROR,
+                   "libxl__destroy_device_models failed for %d", domid);
+
     if (libxl__devices_destroy(gc, domid) < 0)
         LIBXL__LOG(ctx, LIBXL__LOG_ERROR, 
                    "libxl__devices_destroy failed for %d", domid);
@@ -1428,6 +1416,18 @@ int libxl_vncviewer_exec(libxl_ctx *ctx, uint32_t domid, int autopass)
  x_fail:
     GC_FREE;
     return ERROR_FAIL;
+}
+
+/******************************************************************************/
+
+int libxl__dm_setdefault(libxl__gc *gc, libxl_dm *dm)
+{
+    libxl_defbool_setdefault(&dm->is_default, false);
+    libxl_defbool_setdefault(&dm->vga, false);
+    libxl_defbool_setdefault(&dm->serial, false);
+    libxl_defbool_setdefault(&dm->ide, false);
+
+    return 0;
 }
 
 /******************************************************************************/

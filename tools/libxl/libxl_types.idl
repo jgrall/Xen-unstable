@@ -235,6 +235,16 @@ libxl_domain_sched_params = Struct("domain_sched_params",[
     ("extratime",    integer, {'init_val': 'LIBXL_DOMAIN_SCHED_PARAM_EXTRATIME_DEFAULT'}),
     ])
 
+libxl_dm = Struct("dm", [
+    ("name",         string),
+    ("path",         string),
+    ("is_default",   libxl_defbool),
+    ("vga",          libxl_defbool),
+    ("serial",       libxl_defbool),
+    ("vifs",         libxl_string_list),
+    ("ide",          libxl_defbool),
+    ])
+
 libxl_domain_build_info = Struct("domain_build_info",[
     ("max_vcpus",       integer),
     ("cur_vcpus",       integer),
@@ -300,6 +310,7 @@ libxl_domain_build_info = Struct("domain_build_info",[
                                        ("usbdevice",        string),
                                        ("soundhw",          string),
                                        ("xen_platform_pci", libxl_defbool),
+                                       ("max_servers",     integer),
                                        ])),
                  ("pv", Struct(None, [("kernel", string),
                                       ("slack_memkb", MemKB),
@@ -355,6 +366,7 @@ libxl_device_nic = Struct("device_nic", [
     ("nictype", libxl_nic_type),
     ("rate_bytes_per_interval", uint64),
     ("rate_interval_usecs", uint32),
+    ("id", string),
     ])
 
 libxl_device_pci = Struct("device_pci", [
