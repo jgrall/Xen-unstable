@@ -824,7 +824,7 @@ static int qemu_pci_add_xenstore(libxl__gc *gc, uint32_t domid,
                         pcidev->bus, pcidev->dev, pcidev->func);
     }
 
-    libxl__qemu_traditional_cmd(gc, domid, 0, "pci-ins");
+    libxl__qemu_traditional_cmd(gc, domid, "pci-ins");
     rc = libxl__wait_for_device_model(gc, domid, 0, NULL, NULL,
                                       pci_ins_check, state);
     path = libxl__sprintf(gc, "/local/domain/0/dms/%u/%u/parameter",
@@ -862,7 +862,7 @@ static int do_pci_add(libxl__gc *gc, uint32_t domid, libxl_device_pci *pcidev, i
                 rc = qemu_pci_add_xenstore(gc, domid, pcidev);
                 break;
             case LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN:
-                rc = libxl__qmp_pci_add(gc, domid, pcidev);
+                rc = libxl__qmp_pci_add(gc, domid, 0, pcidev);
                 break;
             default:
                 return ERROR_INVAL;
@@ -1124,7 +1124,7 @@ static int qemu_pci_remove_xenstore(libxl__gc *gc, uint32_t domid,
     /* Remove all functions at once atomically by only signalling
      * device-model for function 0 */
     if ( !force && (pcidev->vdevfn & 0x7) == 0 ) {
-        libxl__qemu_traditional_cmd(gc, domid, 0, "pci-rem");
+        libxl__qemu_traditional_cmd(gc, domid, "pci-rem");
         if (libxl__wait_for_device_model(gc, domid, 0, "pci-removed",
                                          NULL, NULL, NULL) < 0) {
             LIBXL__LOG(ctx, LIBXL__LOG_ERROR, "Device Model didn't respond in time");
@@ -1173,7 +1173,7 @@ static int do_pci_remove(libxl__gc *gc, uint32_t domid,
             rc = qemu_pci_remove_xenstore(gc, domid, pcidev, force);
             break;
         case LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN:
-            rc = libxl__qmp_pci_del(gc, domid, pcidev);
+            rc = libxl__qmp_pci_del(gc, domid, 0, pcidev);
             break;
         default:
             rc = ERROR_INVAL;

@@ -19,13 +19,6 @@
 
 #include "libxl_internal.h"
 
-static int libxl__create_device_model(libxl__gc *gc,
-                                      libxl_domid domid,
-                                      libxl_dmid dmid,
-                                      libxl_domain_config *guest_config,
-                                      libxl__domain_build_state *state,
-                                      libxl__spawner_starting **starting_r);
-
 static const char *libxl_tapif_script(libxl__gc *gc)
 {
 #ifdef __linux__
@@ -35,8 +28,8 @@ static const char *libxl_tapif_script(libxl__gc *gc)
 #endif
 }
 
-const char *libxl__device_model_savefile(libxl__gc *gc, uint32_t domid,
-                                         uint32_t dmid)
+const char *libxl__device_model_savefile(libxl__gc *gc, libxl_domid domid,
+                                         libxl_dmid dmid)
 {
     return libxl__sprintf(gc, "/var/lib/xen/qemu-save.%u.%u", domid, dmid);
 }
@@ -74,7 +67,8 @@ const char *libxl__domain_device_model(libxl__gc *gc,
     return dm;
 }
 
-const libxl_vnc_info *libxl__dm_vnc(const libxl_domain_config *guest_config)
+const libxl_vnc_info *libxl__dm_vnc(libxl_dmid dmid,
+                                    const libxl_domain_config *guest_config)
 {
     const libxl_vnc_info *vnc = NULL;
     if (guest_config->b_info.type == LIBXL_DOMAIN_TYPE_HVM) {
@@ -114,7 +108,7 @@ static char ** libxl__build_device_model_args_old(libxl__gc *gc,
     const libxl_domain_create_info *c_info = &guest_config->c_info;
     const libxl_domain_build_info *b_info = &guest_config->b_info;
     const libxl_device_nic *vifs = guest_config->vifs;
-    const libxl_vnc_info *vnc = libxl__dm_vnc(guest_config);
+    const libxl_vnc_info *vnc = libxl__dm_vnc(0, guest_config);
     const libxl_sdl_info *sdl = dm_sdl(guest_config);
     const int num_vifs = guest_config->num_vifs;
     const char *keymap = dm_keymap(guest_config);
@@ -364,7 +358,7 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
     const libxl_device_nic *vifs = guest_config->vifs;
     const int num_disks = guest_config->num_disks;
     const int num_vifs = guest_config->num_vifs;
-    const libxl_vnc_info *vnc = libxl__dm_vnc(guest_config);
+    const libxl_vnc_info *vnc = libxl__dm_vnc(dmid, guest_config);
     const libxl_sdl_info *sdl = dm_sdl(guest_config);
     const char *keymap = dm_keymap(guest_config);
     flexarray_t *dm_args;
@@ -504,7 +498,8 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
                                                          b_info->max_vcpus));
         }
         for (i = 0; i < num_vifs; i++) {
-            if (vifs[i].nictype == LIBXL_NIC_TYPE_IOEMU) {
+            if (vifs[i].nictype == LIBXL_NIC_TYPE_IOEMU
+                && libxl__dm_has_vif(vifs[i].id, dmid, guest_config)) {
                 char *smac = libxl__sprintf(gc,
                                 LIBXL_MAC_FMT, LIBXL_MAC_BYTES(vifs[i].mac));
                 const char *ifname = libxl__device_nic_devname(gc,
@@ -737,10 +732,15 @@ static void spawn_stubdom_pvqemu_cb(libxl__egc *egc,
                                 libxl__dm_spawn_state *stubdom_dmss,
                                 int rc);
 
-void libxl__spawn_stub_dm(libxl__egc *egc, libxl__stub_dm_spawn_state *sdss)
+static void libxl__spawn_local_dm(libxl__egc *egc,
+                                  libxl__dm_spawn_state *dmss);
+
+static void libxl__spawn_stub_dm(libxl__egc *egc,
+                                 libxl__stub_dm_spawn_state *sdss)
 {
     STATE_AO_GC(sdss->dm.spawn.ao);
     libxl_ctx *ctx = libxl__gc_owner(gc);
+    libxl_dmid dmid = sdss->dm.dmid;
     int i, num_console = STUBDOM_SPECIAL_CONSOLES, ret;
     libxl__device_console *console;
     libxl_device_vfb vfb;
@@ -974,10 +974,11 @@ static void device_model_spawn_outcome(libxl__egc *egc,
                                        libxl__dm_spawn_state *dmss,
                                        int rc);
 
-void libxl__spawn_local_dm(libxl__egc *egc, libxl__dm_spawn_state *dmss)
+static void libxl__spawn_local_dm(libxl__egc *egc, libxl__dm_spawn_state *dmss)
 {
     /* convenience aliases */
     const int domid = dmss->guest_domid;
+    const libxl_dmid dmid = dmss->dmid;
     libxl__domain_build_state *const state = dmss->build_state;
     libxl__spawn_state *const spawn = &dmss->spawn;
 
@@ -987,7 +988,8 @@ void libxl__spawn_local_dm(libxl__egc *egc, libxl__dm_spawn_state *dmss)
     libxl_domain_config *guest_config = dmss->guest_config;
     const libxl_domain_create_info *c_info = &guest_config->c_info;
     const libxl_domain_build_info *b_info = &guest_config->b_info;
-    const libxl_vnc_info *vnc = libxl__dm_vnc(guest_config);
+    const libxl_vnc_info *vnc = libxl__dm_vnc(dmid, guest_config);
+    const libxl_dm *dm_config = &guest_config->dms[dmid];
     char *path, *logfile;
     int logfile_w, null;
     int rc;
@@ -996,12 +998,13 @@ void libxl__spawn_local_dm(libxl__egc *egc, libxl__dm_spawn_state *dmss)
     char *vm_path;
     char **pass_stuff;
     const char *dm;
+    const char *name;
 
     if (libxl_defbool_val(b_info->device_model_stubdomain)) {
         abort();
     }
 
-    dm = libxl__domain_device_model(gc, b_info);
+    dm = libxl__domain_device_model(gc, dmid, guest_config);
     if (!dm) {
         rc = ERROR_FAIL;
         goto out;
@@ -1100,6 +1103,34 @@ out:
         device_model_spawn_outcome(egc, dmss, rc);
 }
 
+void libxl__spawn_dms(libxl__egc *egc, libxl__stub_dm_spawn_state *dmss)
+{
+    int i = 0;
+    libxl__domain_create_state *dcs = dmss[0].dm.dcs;
+    libxl_domain_config *const d_config = dcs->guest_config;
+
+    for (i = 0; i < d_config->num_dms; i++)
+    {
+        switch (d_config->c_info.type) {
+        case LIBXL_DOMAIN_TYPE_HVM:
+        {
+            dmss[i].dm.dmid = i;
+            dmss[i].dm.guest_domid = dcs->guest_domid;
+            if (libxl_defbool_val(d_config->b_info.device_model_stubdomain))
+                libxl__spawn_stub_dm(egc, &dcs->dmss[i]);
+            else
+                libxl__spawn_local_dm(egc, &dcs->dmss[i].dm);
+            break;
+        }
+        case LIBXL_DOMAIN_TYPE_PV:
+        {
+            dmss[i].dm.guest_domid = dcs->guest_domid;
+            libxl__spawn_local_dm(egc, &dcs->dmss[i].dm);
+            break;
+        }
+        }
+    }
+}
 
 static void device_model_confirm(libxl__egc *egc, libxl__spawn_state *spawn,
                                  const char *xsdata)
@@ -1153,6 +1184,7 @@ static void device_model_spawn_outcome(libxl__egc *egc,
     dmss->callback(egc, dmss, rc);
 }
 
+#if 0
 int libxl__destroy_device_model(libxl__gc *gc, uint32_t domid)
 {
     libxl_ctx *ctx = libxl__gc_owner(gc);
@@ -1210,6 +1242,7 @@ int libxl__destroy_device_model(libxl__gc *gc, uint32_t domid)
 out:
     return ret;
 }
+#endif
 
 int libxl__need_xenpv_qemu(libxl__gc *gc,
         int nr_consoles, libxl__device_console *consoles,

@@ -753,7 +753,7 @@ int libxl_domain_unpause(libxl_ctx *ctx, uint32_t domid)
                               domid, 0);
         state = libxl__xs_read(gc, XBT_NULL, path);
         if (state != NULL && !strcmp(state, "paused")) {
-            libxl__qemu_traditional_cmd(gc, domid, 0, "continue");
+            libxl__qemu_traditional_cmd(gc, domid, "continue");
             libxl__wait_for_device_model(gc, domid, 0, "running",
                                          NULL, NULL, NULL);
         }
@@ -1178,9 +1178,12 @@ int libxl_domain_destroy(libxl_ctx *ctx, uint32_t domid)
         LIBXL__LOG_ERRNOVAL(ctx, LIBXL__LOG_ERROR, rc, "xc_domain_pause failed for %d", domid);
     }
 
+    /* FIXME: lixbl_destroy_device_models */
+#if 0
     if (libxl__destroy_device_models(gc, domid) < 0)
         LIBXL__LOG(ctx, LIBXL__LOG_ERROR,
                    "libxl__destroy_device_models failed for %d", domid);
+#endif
 
     if (libxl__devices_destroy(gc, domid) < 0)
         LIBXL__LOG(ctx, LIBXL__LOG_ERROR, 

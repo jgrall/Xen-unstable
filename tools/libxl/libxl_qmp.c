@@ -627,8 +627,8 @@ static void qmp_free_handler(libxl__qmp_handler *qmp)
  * API
  */
 
-libxl__qmp_handler *libxl__qmp_initialize(libxl__gc *gc, uint32_t domid,
-                                          uint32_t dmid)
+libxl__qmp_handler *libxl__qmp_initialize(libxl__gc *gc, libxl_domid domid,
+                                          libxl_dmid dmid)
 {
     int ret = 0;
     libxl__qmp_handler *qmp = NULL;
@@ -669,7 +669,7 @@ void libxl__qmp_close(libxl__qmp_handler *qmp)
     qmp_free_handler(qmp);
 }
 
-void libxl__qmp_cleanup(libxl__gc *gc, uint32_t domid, uint32_t dmid)
+void libxl__qmp_cleanup(libxl__gc *gc, libxl_domid domid, libxl_dmid dmid)
 {
     libxl_ctx *ctx = libxl__gc_owner(gc);
     char *qmp_socket;
@@ -747,7 +747,9 @@ out:
     return rc;
 }
 
-int libxl__qmp_pci_add(libxl__gc *gc, int domid, libxl_device_pci *pcidev)
+int libxl__qmp_pci_add(libxl__gc *gc, libxl_domid domid,
+                       libxl_dmid dmid,
+                       libxl_device_pci *pcidev)
 {
     libxl__qmp_handler *qmp = NULL;
     flexarray_t *parameters = NULL;
@@ -793,7 +795,8 @@ int libxl__qmp_pci_add(libxl__gc *gc, int domid, libxl_device_pci *pcidev)
     return rc;
 }
 
-static int qmp_device_del(libxl__gc *gc, int domid, char *id)
+static int qmp_device_del(libxl__gc *gc, libxl_domid domid,
+                          libxl_dmid dmid, char *id)
 {
     libxl__qmp_handler *qmp = NULL;
     flexarray_t *parameters = NULL;
@@ -818,17 +821,19 @@ static int qmp_device_del(libxl__gc *gc, int domid, char *id)
     return rc;
 }
 
-int libxl__qmp_pci_del(libxl__gc *gc, int domid, libxl_device_pci *pcidev)
+int libxl__qmp_pci_del(libxl__gc *gc, libxl_domid domid,
+                       libxl_domid dmid, libxl_device_pci *pcidev)
 {
     char *id = NULL;
 
     id = libxl__sprintf(gc, PCI_PT_QDEV_ID,
                         pcidev->bus, pcidev->dev, pcidev->func);
 
-    return qmp_device_del(gc, domid, id);
+    return qmp_device_del(gc, domid, dmid, id);
 }
 
-int libxl__qmp_save(libxl__gc *gc, int domid, const char *filename)
+int libxl__qmp_save(libxl__gc *gc, libxl_domid domid,
+                    libxl_dmid dmid, const char *filename)
 {
     libxl__qmp_handler *qmp = NULL;
     flexarray_t *parameters = NULL;
@@ -884,12 +889,12 @@ static int qmp_change(libxl__gc *gc, libxl__qmp_handler *qmp,
     return rc;
 }
 
-int libxl__qmp_stop(libxl__gc *gc, int domid)
+int libxl__qmp_stop(libxl__gc *gc, libxl_domid domid, libxl_dmid dmid)
 {
     libxl__qmp_handler *qmp = NULL;
     int rc = 0;
 
-    qmp = libxl__qmp_initialize(gc, domid);
+    qmp = libxl__qmp_initialize(gc, domid, dmid);
     if (!qmp)
         return ERROR_FAIL;
 
@@ -900,12 +905,12 @@ int libxl__qmp_stop(libxl__gc *gc, int domid)
     return rc;
 }
 
-int libxl__qmp_resume(libxl__gc *gc, int domid)
+int libxl__qmp_resume(libxl__gc *gc, libxl_domid domid, libxl_dmid dmid)
 {
     libxl__qmp_handler *qmp = NULL;
     int rc = 0;
 
-    qmp = libxl__qmp_initialize(gc, domid);
+    qmp = libxl__qmp_initialize(gc, domid, dmid);
     if (!qmp)
         return ERROR_FAIL;
 
@@ -916,11 +921,11 @@ int libxl__qmp_resume(libxl__gc *gc, int domid)
     return rc;
 }
 
-int libxl__qmp_initializations(libxl__gc *gc, uint32_t domid,
-                               const libxl_domain_config *guest_config,
-                               uint32_t dmid)
+int libxl__qmp_initializations(libxl__gc *gc, libxl_domid domid,
+                               libxl_dmid dmid,
+                               const libxl_domain_config *guest_config)
 {
-    const libxl_vnc_info *vnc = libxl__dm_vnc(guest_config);
+    const libxl_vnc_info *vnc = libxl__dm_vnc(dmid, guest_config);
     libxl__qmp_handler *qmp = NULL;
     int ret = 0;
 

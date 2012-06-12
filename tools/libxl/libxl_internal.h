@@ -776,7 +776,7 @@ _hidden int libxl__build_hvm(libxl__gc *gc, uint32_t domid,
               libxl_domain_build_info *info,
               libxl__domain_build_state *state);
 
-_hidden int libxl__qemu_traditional_cmd(libxl__gc *gc, uint32_t domid,
+_hidden int libxl__qemu_traditional_cmd(libxl__gc *gc, libxl_domid domid,
                                         const char *cmd);
 _hidden int libxl__domain_rename(libxl__gc *gc, uint32_t domid,
                                  const char *old_name, const char *new_name,
@@ -790,7 +790,9 @@ _hidden int libxl__domain_suspend_common(libxl__gc *gc, uint32_t domid, int fd,
                                          libxl_domain_type type,
                                          int live, int debug,
                                          const libxl_domain_remus_info *r_info);
-_hidden const char *libxl__device_model_savefile(libxl__gc *gc, uint32_t domid);
+_hidden const char *libxl__device_model_savefile(libxl__gc *gc,
+                                                 libxl_domid domid,
+                                                 libxl_dmid dmid);
 _hidden int libxl__domain_suspend_device_model(libxl__gc *gc, uint32_t domid);
 _hidden int libxl__domain_resume_device_model(libxl__gc *gc, uint32_t domid);
 _hidden int libxl__domain_save_device_model(libxl__gc *gc, uint32_t domid, int fd);
@@ -1121,9 +1123,9 @@ struct libxl__dm_spawn_state {
     libxl_domain_config *guest_config;
     libxl__domain_build_state *build_state; /* relates to guest_domid */
     libxl__dm_spawn_cb *callback;
+    libxl_dmid dmid;
+    struct libxl__domain_create_state *dcs;
 };
-
-_hidden void libxl__spawn_local_dm(libxl__egc *egc, libxl__dm_spawn_state*);
 
 /* Stubdom device models. */
 
@@ -1139,8 +1141,7 @@ typedef struct {
     libxl__dm_spawn_state pvqemu;
 } libxl__stub_dm_spawn_state;
 
-_hidden void libxl__spawn_stub_dm(libxl__egc *egc, libxl__stub_dm_spawn_state*);
-
+_hidden void libxl__spawn_dms(libxl__egc *egc, libxl__stub_dm_spawn_state*);
 
 /*
  * libxl__wait_for_offspring - Wait for child state
@@ -1210,7 +1211,8 @@ _hidden int libxl__domain_build(libxl__gc *gc,
 
 /* for device model creation */
 _hidden const char *libxl__domain_device_model(libxl__gc *gc,
-                                        const libxl_domain_build_info *info);
+                                        libxl_dmid dmid,
+                                        const libxl_domain_config *guest_config);
 _hidden int libxl__need_xenpv_qemu(libxl__gc *gc,
         int nr_consoles, libxl__device_console *consoles,
         int nr_vfbs, libxl_device_vfb *vfbs,
@@ -1218,8 +1220,8 @@ _hidden int libxl__need_xenpv_qemu(libxl__gc *gc,
   /* Caller must either: pass starting_r==0, or on successful
    * return pass *starting_r (which will be non-0) to
    * libxl__confirm_device_model_startup or libxl__detach_device_model. */
-_hidden int libxl__wait_for_device_model(libxl__gc *gc,
-                                uint32_t domid, char *state,
+_hidden int libxl__wait_for_device_model(libxl__gc *gc, libxl_domid domid,
+                                libxl_dmid dmid, char *state,
                                 libxl__spawn_starting *spawning,
                                 int (*check_callback)(libxl__gc *gc,
                                                       uint32_t domid,
@@ -1227,7 +1229,8 @@ _hidden int libxl__wait_for_device_model(libxl__gc *gc,
                                                       void *userdata),
                                 void *check_callback_userdata);
 
-_hidden const libxl_vnc_info *libxl__dm_vnc(const libxl_domain_config *g_cfg);
+_hidden const libxl_vnc_info *libxl__dm_vnc(libxl_dmid dmid,
+                                            const libxl_domain_config *g_cfg);
 
 _hidden char *libxl__abs_path(libxl__gc *gc, const char *s, const char *path);
 
@@ -1336,23 +1339,29 @@ _hidden libxl__qmp_handler *libxl__qmp_initialize(libxl__gc *gc,
                                                   uint32_t dmid);
 /* ask to QEMU the serial port information and store it in xenstore. */
 _hidden int libxl__qmp_query_serial(libxl__qmp_handler *qmp);
-_hidden int libxl__qmp_pci_add(libxl__gc *gc, int d, libxl_device_pci *pcidev);
-_hidden int libxl__qmp_pci_del(libxl__gc *gc, int domid,
-                               libxl_device_pci *pcidev);
+_hidden int libxl__qmp_pci_add(libxl__gc *gc, libxl_domid domid,
+                               libxl_dmid dmid, libxl_device_pci *pcidev);
+_hidden int libxl__qmp_pci_del(libxl__gc *gc, libxl_domid domid,
+                               libxl_dmid dmid, libxl_device_pci *pcidev);
 /* Suspend QEMU. */
-_hidden int libxl__qmp_stop(libxl__gc *gc, int domid);
+_hidden int libxl__qmp_stop(libxl__gc *gc, libxl_domid domid,
+                            libxl_dmid dmid);
 /* Resume QEMU. */
-_hidden int libxl__qmp_resume(libxl__gc *gc, int domid);
+_hidden int libxl__qmp_resume(libxl__gc *gc, libxl_domid domid,
+                              libxl_dmid dmid);
 /* Save current QEMU state into fd. */
-_hidden int libxl__qmp_save(libxl__gc *gc, int domid, const char *filename);
+_hidden int libxl__qmp_save(libxl__gc *gc, libxl_domid domid,
+                            libxl_dmid dmid, const char *filename);
 /* close and free the QMP handler */
 _hidden void libxl__qmp_close(libxl__qmp_handler *qmp);
 /* remove the socket file, if the file has already been removed,
  * nothing happen */
-_hidden void libxl__qmp_cleanup(libxl__gc *gc, uint32_t domid);
+_hidden void libxl__qmp_cleanup(libxl__gc *gc, libxl_domid domid,
+                                libxl_dmid dmid);
 
 /* this helper calls qmp_initialize, query_serial and qmp_close */
-_hidden int libxl__qmp_initializations(libxl__gc *gc, uint32_t domid,
+_hidden int libxl__qmp_initializations(libxl__gc *gc, libxl_domid domid,
+                                       libxl_dmid dmid,
                                        const libxl_domain_config *guest_config);
 
 /* on failure, logs */
@@ -1884,7 +1893,8 @@ struct libxl__domain_create_state {
     int guest_domid;
     libxl__domain_build_state build_state;
     libxl__bootloader_state bl;
-    libxl__stub_dm_spawn_state dmss;
+    uint32_t num_dmss;
+    libxl__stub_dm_spawn_state* dmss;
         /* If we're not doing stubdom, we use only dmss.dm,
          * for the non-stubdom device model. */
 };
