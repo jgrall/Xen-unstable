@@ -1076,10 +1076,10 @@ retry_transaction:
     for (arg = args; *arg; arg++)
         LIBXL__LOG(CTX, XTL_DEBUG, "  %s", *arg);
 
-    spawn->what = GCSPRINTF("domain %d device model", domid);
-    spawn->xspath = GCSPRINTF("/local/domain/0/device-model/%d/state", domid);
+    spawn->what = GCSPRINTF("domain %d device model %s", domid, name);
+    spawn->xspath = GCSPRINTF("/local/domain/0/dms/%u/%u/state", domid, dmid);
     spawn->timeout_ms = LIBXL_DEVICE_MODEL_START_TIMEOUT * 1000;
-    spawn->pidpath = GCSPRINTF("%s/image/device-model-pid", dom_path);
+    spawn->pidpath = GCSPRINTF("%s/image/dms/%u-pid", dom_path, dmid);
     spawn->midproc_cb = libxl__spawn_record_pid;
     spawn->confirm_cb = device_model_confirm;
     spawn->failure_cb = device_model_startup_failed;
