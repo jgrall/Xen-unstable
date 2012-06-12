@@ -1108,6 +1108,7 @@ void libxl__spawn_dms(libxl__egc *egc, libxl__stub_dm_spawn_state *dmss)
     int i = 0;
     libxl__domain_create_state *dcs = dmss[0].dm.dcs;
     libxl_domain_config *const d_config = dcs->guest_config;
+    STATE_AO_GC(dmss->dm.spawn.ao);
 
     for (i = 0; i < d_config->num_dms; i++)
     {
@@ -1128,6 +1129,8 @@ void libxl__spawn_dms(libxl__egc *egc, libxl__stub_dm_spawn_state *dmss)
             libxl__spawn_local_dm(egc, &dcs->dmss[i].dm);
             break;
         }
+        default:
+            LIBXL__LOG(CTX, XTL_ERROR, "Unknow type %u", d_config->c_info.type);
         }
     }
 }
