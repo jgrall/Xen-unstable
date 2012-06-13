@@ -1228,6 +1228,7 @@ _hidden int libxl__wait_for_device_model(libxl__gc *gc, libxl_domid domid,
                                                       const char *state,
                                                       void *userdata),
                                 void *check_callback_userdata);
+_hidden int libxl__destroy_device_models(libxl__gc *gc, libxl_domid domid);
 
 _hidden const libxl_vnc_info *libxl__dm_vnc(libxl_dmid dmid,
                                             const libxl_domain_config *g_cfg);

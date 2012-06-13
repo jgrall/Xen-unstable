@@ -1187,14 +1187,18 @@ static void device_model_spawn_outcome(libxl__egc *egc,
     dmss->callback(egc, dmss, rc);
 }
 
-#if 0
-int libxl__destroy_device_model(libxl__gc *gc, uint32_t domid)
+static int libxl__destroy_device_model(libxl__gc *gc, libxl_domid domid,
+                                       libxl_dmid dmid)
 {
     libxl_ctx *ctx = libxl__gc_owner(gc);
     char *pid;
     int ret;
 
-    pid = libxl__xs_read(gc, XBT_NULL, libxl__sprintf(gc, "/local/domain/%d/image/device-model-pid", domid));
+    /* FIXME: stubdomain */
+    pid = libxl__xs_read(gc, XBT_NULL,
+                         libxl__sprintf(gc, "/local/domain/%u/image/dms/%u-pid",
+                                        domid, dmid));
+
     if (!pid) {
         int stubdomid = libxl_get_stubdom_id(ctx, domid);
         const char *savefile;
@@ -1245,7 +1249,39 @@ int libxl__destroy_device_model(libxl__gc *gc, uint32_t domid)
 out:
     return ret;
 }
-#endif
+
+int libxl__destroy_device_models(libxl__gc *gc,
+                                 libxl_domid domid)
+{
+    libxl_ctx *ctx = libxl__gc_owner(gc);
+    int ret = 0;
+    char **dir = NULL;
+    unsigned int n;
+    char *path;
+    unsigned int i = 0;
+    libxl_dmid dmid;
+
+    path = libxl__sprintf(gc, "/local/domain/0/dms/%u", domid);
+
+    dir = libxl__xs_directory(gc, XBT_NULL, path, &n);
+    if (dir)
+    {
+        for (i = 0; i < n; i++)
+        {
+            /* The current format is n-pid, so we retrieve only the dmid */
+            dmid = atoi(dir[i]);
+            if (libxl__destroy_device_model(gc, domid, dmid))
+                ret = ERROR_FAIL;
+            libxl__qmp_cleanup(gc, domid, dmid);
+        }
+    }
+
+    if (!ret)
+        xs_rm(ctx->xsh, XBT_NULL, libxl__sprintf(gc, "/local/domain/0/dms/%u",
+                                                 domid));
+
+    return ret;
+}
 
 int libxl__need_xenpv_qemu(libxl__gc *gc,
         int nr_consoles, libxl__device_console *consoles,
