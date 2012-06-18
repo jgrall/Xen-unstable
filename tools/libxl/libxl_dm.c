@@ -1186,11 +1186,13 @@ static void device_model_spawn_outcome(libxl__egc *egc,
 }
 
 static int libxl__destroy_device_model(libxl__gc *gc, libxl_domid domid,
-                                       libxl_dmid dmid)
+                                       libxl_dmid dmid, void *args)
 {
     libxl_ctx *ctx = libxl__gc_owner(gc);
     char *pid;
     int ret;
+
+    (void) args;
 
     /* FIXME: stubdomain */
     pid = libxl__xs_read(gc, XBT_NULL,
@@ -1250,7 +1252,8 @@ out:
 }
 
 int libxl__browse_device_models(libxl__gc *gc, libxl_domid domid,
-                                libxl__device_model_cb *cb, int exit_on_error)
+                                libxl__device_model_cb *cb,
+                                int exit_on_error, void *args)
 {
     int ret = 0;
     int tmp = 0;
@@ -1267,7 +1270,7 @@ int libxl__browse_device_models(libxl__gc *gc, libxl_domid domid,
         for (i = 0; i < n; i++) {
             /* The current format is n-pid, so we retrieve only the dmid */
             dmid = atoi(dir[i]);
-            tmp = cb(gc, domid, dmid);
+            tmp = cb(gc, domid, dmid, args);
             if (tmp) {
                 ret = (ret) ? ret : tmp;
                 if (exit_on_error)
@@ -1286,7 +1289,8 @@ int libxl__destroy_device_models(libxl__gc *gc,
     libxl_ctx *ctx = libxl__gc_owner(gc);
     int ret;
 
-    ret = libxl__browse_device_models(gc, domid, libxl__destroy_device_model, 0);
+    ret = libxl__browse_device_models(gc, domid, libxl__destroy_device_model,
+                                      0, NULL);
 
     if (!ret)
         xs_rm(ctx->xsh, XBT_NULL, libxl__sprintf(gc, "/local/domain/0/dms/%u",

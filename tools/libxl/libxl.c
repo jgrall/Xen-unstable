@@ -388,7 +388,7 @@ int libxl_domain_resume(libxl_ctx *ctx, uint32_t domid, int suspend_cancel)
     }
 
     if (LIBXL__DOMAIN_IS_TYPE(gc,  domid, HVM)) {
-        rc = libxl__domain_resume_device_model(gc, domid);
+        rc = libxl__domain_resume_device_models(gc, domid);
         if (rc) {
             LIBXL__LOG(ctx, LIBXL__LOG_ERROR,
                        "failed to resume device model for domain %u:%d",
@@ -701,7 +701,7 @@ int libxl_domain_suspend(libxl_ctx *ctx, libxl_domain_suspend_info *info,
                                       /* No Remus */ NULL);
 
     if (!rc && type == LIBXL_DOMAIN_TYPE_HVM)
-        rc = libxl__domain_save_device_model(gc, domid, fd);
+        rc = libxl__domain_save_device_models(gc, domid, fd);
     GC_FREE;
     return rc;
 }
