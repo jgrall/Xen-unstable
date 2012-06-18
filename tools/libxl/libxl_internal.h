@@ -793,7 +793,8 @@ _hidden int libxl__domain_suspend_common(libxl__gc *gc, uint32_t domid, int fd,
 _hidden const char *libxl__device_model_savefile(libxl__gc *gc,
                                                  libxl_domid domid,
                                                  libxl_dmid dmid);
-_hidden int libxl__domain_suspend_device_model(libxl__gc *gc, uint32_t domid);
+_hidden int libxl__domain_suspend_device_models(libxl__gc *gc,
+                                                libxl_domid domid);
 _hidden int libxl__domain_resume_device_model(libxl__gc *gc, uint32_t domid);
 _hidden int libxl__domain_save_device_model(libxl__gc *gc, uint32_t domid, int fd);
 _hidden void libxl__userdata_destroyall(libxl__gc *gc, uint32_t domid);
@@ -1228,6 +1229,13 @@ _hidden int libxl__wait_for_device_model(libxl__gc *gc, libxl_domid domid,
                                                       const char *state,
                                                       void *userdata),
                                 void *check_callback_userdata);
+typedef int libxl__device_model_cb(libxl__gc *gc, libxl_domid domid,
+                                   libxl_dmid dmid);
+
+_hidden int libxl__browse_device_models(libxl__gc *gc, libxl_domid domid,
+                                        libxl__device_model_cb *cb,
+                                        int exit_on_error);
+
 _hidden int libxl__destroy_device_models(libxl__gc *gc, libxl_domid domid);
 
 _hidden const libxl_vnc_info *libxl__dm_vnc(libxl_dmid dmid,

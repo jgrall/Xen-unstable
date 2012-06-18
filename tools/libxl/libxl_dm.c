@@ -1245,14 +1245,15 @@ static int libxl__destroy_device_model(libxl__gc *gc, libxl_domid domid,
     xs_rm(ctx->xsh, XBT_NULL, libxl__sprintf(gc, "/local/domain/%d/hvmloader", domid));
 
 out:
+    libxl__qmp_cleanup(gc, domid, dmid);
     return ret;
 }
 
-int libxl__destroy_device_models(libxl__gc *gc,
-                                 libxl_domid domid)
+int libxl__browse_device_models(libxl__gc *gc, libxl_domid domid,
+                                libxl__device_model_cb *cb, int exit_on_error)
 {
-    libxl_ctx *ctx = libxl__gc_owner(gc);
     int ret = 0;
+    int tmp = 0;
     char **dir = NULL;
     unsigned int n;
     char *path;
@@ -1262,22 +1263,34 @@ int libxl__destroy_device_models(libxl__gc *gc,
     path = libxl__sprintf(gc, "/local/domain/0/dms/%u", domid);
 
     dir = libxl__xs_directory(gc, XBT_NULL, path, &n);
-    if (dir)
-    {
-        for (i = 0; i < n; i++)
-        {
+    if (dir) {
+        for (i = 0; i < n; i++) {
             /* The current format is n-pid, so we retrieve only the dmid */
             dmid = atoi(dir[i]);
-            if (libxl__destroy_device_model(gc, domid, dmid))
-                ret = ERROR_FAIL;
-            libxl__qmp_cleanup(gc, domid, dmid);
+            tmp = cb(gc, domid, dmid);
+            if (tmp) {
+                ret = (ret) ? ret : tmp;
+                if (exit_on_error)
+                    return ret;
+            }
         }
-    }
+    } else
+        return ERROR_INVAL;
+
+    return ret;
+}
+
+int libxl__destroy_device_models(libxl__gc *gc,
+                                 libxl_domid domid)
+{
+    libxl_ctx *ctx = libxl__gc_owner(gc);
+    int ret;
+
+    ret = libxl__browse_device_models(gc, domid, libxl__destroy_device_model, 0);
 
     if (!ret)
         xs_rm(ctx->xsh, XBT_NULL, libxl__sprintf(gc, "/local/domain/0/dms/%u",
                                                  domid));
-
     return ret;
 }
 

@@ -597,7 +597,8 @@ static int libxl__domain_suspend_common_switch_qemu_logdirty(int domid, unsigned
     return rc ? 0 : 1;
 }
 
-int libxl__domain_suspend_device_model(libxl__gc *gc, uint32_t domid)
+static int libxl__domain_suspend_device_model(libxl__gc *gc, libxl_domid domid,
+                                              libxl_dmid dmid)
 {
     libxl_ctx *ctx = libxl__gc_owner(gc);
     int ret = 0;
@@ -764,10 +765,12 @@ static int libxl__domain_suspend_common_callback(void *data)
 
  guest_suspended:
     if (si->hvm) {
-        ret = libxl__domain_suspend_device_model(si->gc, si->domid);
+        ret = libxl__browse_device_models(si->gc, si->domid,
+                                          libxl__domain_suspend_device_model,
+                                          1);
         if (ret) {
             LIBXL__LOG(ctx, LIBXL__LOG_ERROR,
-                       "libxl__domain_suspend_device_model failed ret=%d", ret);
+                       "libxl__domain_suspend_device_models failed ret=%d", ret);
             return 0;
         }
     }
