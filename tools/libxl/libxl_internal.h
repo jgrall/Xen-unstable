@@ -1141,7 +1141,7 @@ typedef struct {
     libxl__dm_spawn_state pvqemu;
 } libxl__stub_dm_spawn_state;
 
-_hidden void libxl__spawn_dms(libxl__egc *egc, libxl__stub_dm_spawn_state*);
+_hidden void libxl__spawn_dm(libxl__egc *egc, libxl__stub_dm_spawn_state*);
 
 /*
  * libxl__wait_for_offspring - Wait for child state
@@ -1894,7 +1894,6 @@ struct libxl__domain_create_state {
     int guest_domid;
     libxl__domain_build_state build_state;
     libxl__bootloader_state bl;
-    uint32_t num_dmss;
     libxl__stub_dm_spawn_state* dmss;
         /* If we're not doing stubdom, we use only dmss.dm,
          * for the non-stubdom device model. */

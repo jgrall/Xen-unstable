@@ -1103,35 +1103,30 @@ out:
         device_model_spawn_outcome(egc, dmss, rc);
 }
 
-void libxl__spawn_dms(libxl__egc *egc, libxl__stub_dm_spawn_state *dmss)
+void libxl__spawn_dm(libxl__egc *egc, libxl__stub_dm_spawn_state *dmss)
 {
-    int i = 0;
-    libxl__domain_create_state *dcs = dmss[0].dm.dcs;
+    libxl__domain_create_state *dcs = dmss->dm.dcs;
     libxl_domain_config *const d_config = dcs->guest_config;
     STATE_AO_GC(dmss->dm.spawn.ao);
 
-    for (i = 0; i < d_config->num_dms; i++)
+    switch (d_config->c_info.type) {
+    case LIBXL_DOMAIN_TYPE_HVM:
     {
-        switch (d_config->c_info.type) {
-        case LIBXL_DOMAIN_TYPE_HVM:
-        {
-            dmss[i].dm.dmid = i;
-            dmss[i].dm.guest_domid = dcs->guest_domid;
-            if (libxl_defbool_val(d_config->b_info.device_model_stubdomain))
-                libxl__spawn_stub_dm(egc, &dcs->dmss[i]);
-            else
-                libxl__spawn_local_dm(egc, &dcs->dmss[i].dm);
-            break;
-        }
-        case LIBXL_DOMAIN_TYPE_PV:
-        {
-            dmss[i].dm.guest_domid = dcs->guest_domid;
-            libxl__spawn_local_dm(egc, &dcs->dmss[i].dm);
-            break;
-        }
-        default:
-            LIBXL__LOG(CTX, XTL_ERROR, "Unknow type %u", d_config->c_info.type);
-        }
+        dmss->dm.guest_domid = dcs->guest_domid;
+        if (libxl_defbool_val(d_config->b_info.device_model_stubdomain))
+            libxl__spawn_stub_dm(egc, dmss);
+        else
+            libxl__spawn_local_dm(egc, &dmss->dm);
+        break;
+    }
+    case LIBXL_DOMAIN_TYPE_PV:
+    {
+        dmss->dm.guest_domid = dcs->guest_domid;
+        libxl__spawn_local_dm(egc, &dmss->dm);
+        break;
+    }
+    default:
+        LIBXL__LOG(CTX, XTL_ERROR, "Unknow type %u", d_config->c_info.type);
     }
 }
 

@@ -682,6 +682,26 @@ static void domcreate_console_available(libxl__egc *egc,
                                         dcs->guest_domid));
 }
 
+static void domcreate_spawn_devmodel(libxl__egc *egc,
+                                    libxl__domain_create_state *dcs,
+                                    libxl_dmid dmid)
+{
+    libxl__stub_dm_spawn_state *dmss = &dcs->dmss[dmid];
+    STATE_AO_GC(dcs->ao);
+
+    /* We might be going to call libxl__spawn_local_dm, or _spawn_stub_dm.
+     * Fill in any field required by either, including both relevant
+     * callbacks (_spawn_stub_dm will overwrite our trespass if needed). */
+    dmss->dm.spawn.ao = ao;
+    dmss->dm.guest_config = dcs->guest_config;
+    dmss->dm.build_state = &dcs->build_state;
+    dmss->dm.callback = domcreate_devmodel_started;
+    dmss->callback = domcreate_devmodel_started;
+    dmss->dm.dmid = dmid;
+
+    libxl__spawn_dm(egc, dmss);
+}
+
 static void domcreate_bootloader_done(libxl__egc *egc,
                                       libxl__bootloader_state *bl,
                                       int ret)
@@ -703,18 +723,6 @@ static void domcreate_bootloader_done(libxl__egc *egc,
      * been initialised by the bootloader already.
      */
     state->pv_cmdline = bl->cmdline;
-
-    /* We might be going to call libxl__spawn_local_dm, or _spawn_stub_dm.
-     * Fill in any field required by either, including both relevant
-     * callbacks (_spawn_stub_dm will overwrite our trespass if needed). */
-    for (i = 0; i < d_config->num_dms; i++) {
-        dcs->dmss[i].dm.spawn.ao = ao;
-        dcs->dmss[i].dm.guest_config = dcs->guest_config;
-        dcs->dmss[i].dm.build_state = &dcs->build_state;
-        dcs->dmss[i].dm.callback = domcreate_devmodel_started;
-        dcs->dmss[i].callback = domcreate_devmodel_started;
-    }
-
     if ( restore_fd >= 0 ) {
         ret = domain_restore(gc, &d_config->b_info, domid, restore_fd, state);
     } else {
@@ -763,7 +771,7 @@ static void domcreate_bootloader_done(libxl__egc *egc,
         libxl_device_vkb_add(ctx, domid, &vkb);
         libxl_device_vkb_dispose(&vkb);
 
-        libxl__spawn_dms(egc, dcs->dmss);
+        domcreate_spawn_devmodel(egc, dcs, 0);
         return;
     }
     case LIBXL_DOMAIN_TYPE_PV:
@@ -788,8 +796,8 @@ static void domcreate_bootloader_done(libxl__egc *egc,
         libxl__device_console_dispose(&console);
 
         if (need_qemu) {
-            assert (dcs->dmss);
-            libxl__spawn_dms(egc, dcs->dmss);
+            assert(dcs->dmss);
+            domcreate_spawn_devmodel(egc, dcs, 0);
             return;
         } else {
             assert(!dcs->dmss);
@@ -846,10 +854,14 @@ static void domcreate_devmodel_started(libxl__egc *egc,
         }
     }
 
-    libxl__arch_domain_create(gc, d_config, domid);
-    domcreate_console_available(egc, dcs);
+    if ((dmss->dmid + 1) >= dcs->guest_config->num_dms) {
+        libxl__arch_domain_create(gc, d_config, domid);
+        domcreate_console_available(egc, dcs);
+        domcreate_complete(egc, dcs, 0);
+    } else {
+        domcreate_spawn_devmodel(egc, dcs, dmss->dmid + 1);
+    }
 
-    domcreate_complete(egc, dcs, 0);
     return;
 
 error_out:
