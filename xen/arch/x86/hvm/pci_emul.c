@@ -33,7 +33,6 @@ static int handle_config_space(int dir, uint32_t port, uint32_t bytes,
     s = radix_tree_lookup(&v->domain->arch.hvm_domain.pci_root.pci_list,
                           PCI_MASK_BDF(pci_cf8));
 
-    /* We just fill the ioreq, hvm_send_assist_req will send the request */
     if (unlikely(s == NULL))
     {
         *val = ~0;
@@ -41,8 +40,14 @@ static int handle_config_space(int dir, uint32_t port, uint32_t bytes,
         goto end_handle;
     }
 
+    /**
+     * We just fill the ioreq, hvm_send_assist_req will send the request
+     * The size is used to find the right access
+     **/
+    /* We use the 16 high-bits for the offset (0 => 0xcfc, 1 => 0xcfd...) */
+    p->size = (p->addr - 0xcfc) << 16 | (p->size & 0xffff);
     p->type = IOREQ_TYPE_PCI_CONFIG;
-    p->addr = (pci_cf8 & ~3) + (p->addr & 3);
+    p->addr = pci_cf8;
 
     set_ioreq(v, &s->ioreq, p);
 
