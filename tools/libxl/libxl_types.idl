@@ -235,14 +235,17 @@ libxl_domain_sched_params = Struct("domain_sched_params",[
     ("extratime",    integer, {'init_val': 'LIBXL_DOMAIN_SCHED_PARAM_EXTRATIME_DEFAULT'}),
     ])
 
+libxl_dm_cap = Enumeration("dm_cap", [
+    (1, "UI"), # Emulate all UI + default device
+    (2, "IDE"), # Emulate IDE
+    (4, "SERIAL"), # Emulate Serial
+    ])
+
 libxl_dm = Struct("dm", [
     ("name",         string),
     ("path",         string),
-    ("is_default",   libxl_defbool),
-    ("vga",          libxl_defbool),
-    ("serial",       libxl_defbool),
+    ("capabilities",   uint64),
     ("vifs",         libxl_string_list),
-    ("ide",          libxl_defbool),
     ])
 
 libxl_domain_build_info = Struct("domain_build_info",[

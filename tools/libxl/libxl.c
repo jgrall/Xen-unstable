@@ -1422,11 +1422,6 @@ int libxl_vncviewer_exec(libxl_ctx *ctx, uint32_t domid, int autopass)
 
 int libxl__dm_setdefault(libxl__gc *gc, libxl_dm *dm)
 {
-    libxl_defbool_setdefault(&dm->is_default, false);
-    libxl_defbool_setdefault(&dm->vga, false);
-    libxl_defbool_setdefault(&dm->serial, false);
-    libxl_defbool_setdefault(&dm->ide, false);
-
     return 0;
 }
 

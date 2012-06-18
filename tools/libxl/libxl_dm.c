@@ -323,7 +323,7 @@ static int libxl__dm_has_vif(char *vifname, libxl_dmid dmid,
     const libxl_dm *dm_config = &guest_config->dms[dmid];
     int i = 0;
 
-    if (!vifname && libxl_defbool_val(dm_config->is_default))
+    if (!vifname && (dm_config->capabilities & LIBXL_DM_CAP_UI))
         return 1;
 
     if (!dm_config->vifs)
@@ -364,10 +364,9 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
     flexarray_t *dm_args;
     int i;
     uint64_t ram_size;
-    int is_default = libxl_defbool_val(dm_config->is_default);
-    int has_vga = libxl_defbool_val(dm_config->vga);
-    int has_serial = libxl_defbool_val(dm_config->serial);
-    int emulate_ide = libxl_defbool_val(dm_config->ide);
+    uint32_t cap_ui = dm_config->capabilities & LIBXL_DM_CAP_UI;
+    uint32_t cap_ide = dm_config->capabilities & LIBXL_DM_CAP_IDE;
+    uint32_t cap_serial = dm_config->capabilities & LIBXL_DM_CAP_SERIAL;
 
     dm_args = flexarray_make(16, 1);
     if (!dm_args)
@@ -394,7 +393,7 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
     if (c_info->name) {
         flexarray_vappend(dm_args, "-name", c_info->name, NULL);
     }
-    if (vnc && has_vga) {
+    if (vnc && cap_ui) {
         int display = 0;
         const char *listen = "127.0.0.1";
         char *vncarg = NULL;
@@ -425,7 +424,7 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
         }
         flexarray_append(dm_args, vncarg);
     }
-    if (sdl && has_vga) {
+    if (sdl && cap_ui) {
         flexarray_append(dm_args, "-sdl");
         /* XXX sdl->{display,xauthority} into $DISPLAY/$XAUTHORITY */
     }
@@ -441,12 +440,12 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
     if (b_info->type == LIBXL_DOMAIN_TYPE_HVM) {
         int ioemu_vifs = 0;
 
-        if (b_info->u.hvm.serial && has_serial) {
+        if (b_info->u.hvm.serial && cap_serial) {
             flexarray_vappend(dm_args, "-serial", b_info->u.hvm.serial, NULL);
         }
 
         if ((libxl_defbool_val(b_info->u.hvm.nographic) && (!sdl && !vnc))
-            || !has_vga) {
+            || !cap_ui) {
             flexarray_append(dm_args, "-nographic");
         }
         else {
@@ -474,7 +473,7 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
                     libxl__sprintf(gc, "order=%s", b_info->u.hvm.boot), NULL);
         }
         if ((libxl_defbool_val(b_info->u.hvm.usb) || b_info->u.hvm.usbdevice)
-            && is_default) {
+            && cap_ui) {
             flexarray_append(dm_args, "-usb");
             if (b_info->u.hvm.usbdevice) {
                 flexarray_vappend(dm_args,
@@ -525,7 +524,7 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
             flexarray_append(dm_args, "-net");
             flexarray_append(dm_args, "none");
         }
-        if (libxl_defbool_val(b_info->u.hvm.gfx_passthru) && has_vga) {
+        if (libxl_defbool_val(b_info->u.hvm.gfx_passthru) && cap_ui) {
             flexarray_append(dm_args, "-gfx_passthru");
         }
     } else {
@@ -553,8 +552,8 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
         flexarray_append(dm_args,
                          libxl__sprintf(gc,
                                         "xenfv,xen_dmid=%u,xen_default_dev=%s,xen_emulate_ide=%s",
-                                        dmid, (is_default) ? "on" : "off",
-                                        (emulate_ide) ? "on" : "off"));
+                                        dmid, (cap_ui) ? "on" : "off",
+                                        (cap_ide) ? "on" : "off"));
         for (i = 0; b_info->extra_hvm && b_info->extra_hvm[i] != NULL; i++)
             flexarray_append(dm_args, b_info->extra_hvm[i]);
         break;
@@ -567,7 +566,7 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
     flexarray_append(dm_args, libxl__sprintf(gc, "%"PRId64, ram_size));
 
     if (b_info->type == LIBXL_DOMAIN_TYPE_HVM) {
-        if (emulate_ide) {
+        if (cap_ide) {
             for (i = 0; i < num_disks; i++) {
                 int disk, part;
                 int dev_number =
