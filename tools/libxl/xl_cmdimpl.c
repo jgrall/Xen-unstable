@@ -1240,10 +1240,11 @@ skip_vfb:
         }
     }
 
+    d_config->num_dms = 0;
+    d_config->dms = NULL;
+
     if (b_info->device_model_version == LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN
         && !xlu_cfg_get_list (config, "device_models", &dms, 0, 0)) {
-        d_config->num_dms = 0;
-        d_config->dms = NULL;
         while ((buf = xlu_cfg_get_listitem (dms, d_config->num_dms)) != NULL) {
             libxl_dm *dm;
             size_t size = sizeof (libxl_dm) * (d_config->num_dms + 1);
@@ -1260,19 +1261,6 @@ skip_vfb:
             }
             d_config->num_dms++;
         }
-        if (c_info->type == LIBXL_DOMAIN_TYPE_HVM) {
-            b_info->u.hvm.max_servers = d_config->num_dms;
-        }
-    }
-    else
-    {
-        d_config->num_dms = 1;
-        d_config->dms = (libxl_dm *)realloc (d_config->dms, sizeof (libxl_dm));
-        if (!d_config->dms) {
-            fprintf(stderr, "Can't realloc d_config->dms\n");
-            exit (1);
-        }
-        libxl_dm_init (d_config->dms);
     }
 
 #define parse_extra_args(type)                                            \

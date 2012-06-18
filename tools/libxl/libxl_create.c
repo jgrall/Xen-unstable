@@ -62,6 +62,50 @@ void libxl_domain_config_dispose(libxl_domain_config *d_config)
     libxl_domain_build_info_dispose(&d_config->b_info);
 }
 
+static int libxl__domain_config_setdefault(libxl__gc *gc,
+                                           libxl_domain_config *d_config)
+{
+    libxl_domain_build_info *b_info = &d_config->b_info;
+    uint64_t cap = 0;
+    int i = 0;
+    int ret = 0;
+    libxl_dm *default_dm = NULL;
+
+    if (b_info->device_model_version == LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN_TRADITIONAL
+        && (d_config->num_dms > 1))
+        return ERROR_INVAL;
+
+    if (!d_config->num_dms) {
+        d_config->dms = malloc(sizeof (*d_config->dms));
+        if (!d_config->dms)
+            return ERROR_NOMEM;
+        libxl_dm_init(d_config->dms);
+        d_config->num_dms = 1;
+    }
+
+    for (i = 0; i < d_config->num_dms; i++)
+    {
+        ret = libxl__dm_setdefault(gc, &d_config->dms[i]);
+        if (ret) return ret;
+
+        if (cap & d_config->dms[i].capabilities)
+            /* Some capabilities are already emulated */
+            return ERROR_INVAL;
+
+        cap |= d_config->dms[i].capabilities;
+        if (d_config->dms[i].capabilities & LIBXL_DM_CAP_UI)
+            default_dm = &d_config->dms[i];
+    }
+
+    if (!default_dm)
+        default_dm = &d_config->dms[0];
+
+    /* The default device model emulates all that the others don't emulate */
+    default_dm->capabilities |= ~cap;
+
+    return ret;
+}
+
 int libxl__domain_create_info_setdefault(libxl__gc *gc,
                                          libxl_domain_create_info *c_info)
 {
@@ -90,16 +134,13 @@ int libxl__domain_build_info_setdefault(libxl__gc *gc,
             b_info->device_model_version =
                 LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN_TRADITIONAL;
         else {
-//            const char *dm;
+            const char *dm;
             int rc = 0;
 
             b_info->device_model_version =
                 LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN;
-#if 0
-            /* TO FIX */
-            dm = libxl__domain_device_model(gc, 0, b_info);
+            dm = libxl__domain_device_model(gc, ~0, b_info);
             rc = access(dm, X_OK);
-#endif
             if (rc < 0) {
                 /* qemu-xen unavailable, use qemu-xen-traditional */
                 if (errno == ENOENT) {
@@ -628,14 +669,17 @@ static void initiate_domain_create(libxl__egc *egc,
     ret = libxl__domain_build_info_setdefault(gc, &d_config->b_info);
     if (ret) goto error_out;
 
+    ret = libxl__domain_config_setdefault(gc, d_config);
+    if (ret) goto error_out;
+
     for (i = 0; i < d_config->num_disks; i++) {
         ret = libxl__device_disk_setdefault(gc, &d_config->disks[i]);
         if (ret) goto error_out;
     }
 
     GCNEW_ARRAY(dcs->dmss, d_config->num_dms);
+
     for (i = 0; i < d_config->num_dms; i++) {
-        ret = libxl__dm_setdefault(gc, &d_config->dms[i]);
         dcs->dmss[i].dm.guest_domid = 0; /* means we haven't spawned */
         dcs->dmss[i].dm.dcs = dcs;
     }

@@ -36,15 +36,17 @@ const char *libxl__device_model_savefile(libxl__gc *gc, libxl_domid domid,
 
 const char *libxl__domain_device_model(libxl__gc *gc,
                                        uint32_t dmid,
-                                       const libxl_domain_config *guest_config)
+                                       const libxl_domain_build_info *b_info)
 {
     libxl_ctx *ctx = libxl__gc_owner(gc);
     const char *dm;
+    libxl_domain_config *guest_config = CONTAINER_OF(b_info, *guest_config,
+                                                     b_info);
 
     if (libxl_defbool_val(guest_config->b_info.device_model_stubdomain))
         return NULL;
 
-    if (guest_config->dms[dmid].path) {
+    if (dmid < guest_config->num_dms && guest_config->dms[dmid].path) {
         dm = libxl__strdup(gc, guest_config->dms[dmid].path);
     } else if (guest_config->b_info.device_model) {
         dm = libxl__strdup(gc, guest_config->b_info.device_model);
@@ -394,6 +396,7 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
     if (c_info->name) {
         flexarray_vappend(dm_args, "-name", c_info->name, NULL);
     }
+
     if (vnc && cap_ui) {
         int display = 0;
         const char *listen = "127.0.0.1";
@@ -1004,7 +1007,7 @@ static void libxl__spawn_local_dm(libxl__egc *egc, libxl__dm_spawn_state *dmss)
         abort();
     }
 
-    dm = libxl__domain_device_model(gc, dmid, guest_config);
+    dm = libxl__domain_device_model(gc, dmid, b_info);
     if (!dm) {
         rc = ERROR_FAIL;
         goto out;
