@@ -367,6 +367,7 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
     uint32_t cap_ui = dm_config->capabilities & LIBXL_DM_CAP_UI;
     uint32_t cap_ide = dm_config->capabilities & LIBXL_DM_CAP_IDE;
     uint32_t cap_serial = dm_config->capabilities & LIBXL_DM_CAP_SERIAL;
+    uint32_t cap_audio = dm_config->capabilities & LIBXL_DM_CAP_AUDIO;
 
     dm_args = flexarray_make(16, 1);
     if (!dm_args)
@@ -480,7 +481,7 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
                                   "-usbdevice", b_info->u.hvm.usbdevice, NULL);
             }
         }
-        if (b_info->u.hvm.soundhw) {
+        if (b_info->u.hvm.soundhw && cap_audio) {
             flexarray_vappend(dm_args, "-soundhw", b_info->u.hvm.soundhw, NULL);
         }
         if (!libxl_defbool_val(b_info->u.hvm.acpi)) {

@@ -239,6 +239,7 @@ libxl_dm_cap = Enumeration("dm_cap", [
     (1, "UI"), # Emulate all UI + default device
     (2, "IDE"), # Emulate IDE
     (4, "SERIAL"), # Emulate Serial
+    (8, "AUDIO"), # Emulate audio
     ])
 
 libxl_dm = Struct("dm", [
