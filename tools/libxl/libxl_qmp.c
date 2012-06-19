@@ -840,7 +840,7 @@ int libxl__qmp_save(libxl__gc *gc, libxl_domid domid,
     libxl_key_value_list args = NULL;
     int rc = 0;
 
-    qmp = libxl__qmp_initialize(gc, domid, 0);
+    qmp = libxl__qmp_initialize(gc, domid, dmid);
     if (!qmp)
         return ERROR_FAIL;
 
