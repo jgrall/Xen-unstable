@@ -539,7 +539,8 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
 
     if (state->saved_state) {
         /* This file descriptor is meant to be used by QEMU */
-        int migration_fd = open(state->saved_state, O_RDONLY);
+        int migration_fd = open(libxl__sprintf(gc, "%s.%u", state->saved_state,
+                                               dmid), O_RDONLY);
         flexarray_append(dm_args, "-incoming");
         flexarray_append(dm_args, libxl__sprintf(gc, "fd:%d", migration_fd));
     }
@@ -1170,7 +1171,8 @@ static void device_model_spawn_outcome(libxl__egc *egc,
     libxl__domain_build_state *state = dmss->build_state;
 
     if (state->saved_state) {
-        ret2 = unlink(state->saved_state);
+        ret2 = unlink(libxl__sprintf(gc, "%s.%u", state->saved_state,
+                                     dmss->dmid));
         if (ret2) {
             LOGE(ERROR, "%s: failed to remove device-model state %s",
                  dmss->spawn.what, state->saved_state);

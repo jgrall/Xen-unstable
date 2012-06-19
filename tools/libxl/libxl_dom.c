@@ -607,7 +607,7 @@ static int libxl__domain_suspend_device_model(libxl__gc *gc, libxl_domid domid,
 {
     libxl_ctx *ctx = libxl__gc_owner(gc);
     int ret = 0;
-    const char *filename = libxl__device_model_savefile(gc, domid, 0);
+    const char *filename = libxl__device_model_savefile(gc, domid, dmid);
 
     (void) args;
 
@@ -1043,16 +1043,18 @@ static int libxl__domain_save_device_model(libxl__gc *gc, libxl_domid domid,
 
     if (stat(filename, &st) < 0)
     {
-        LIBXL__LOG(ctx, LIBXL__LOG_ERROR, "Unable to stat qemu save file\n");
+        LIBXL__LOG(ctx, LIBXL__LOG_ERROR, "Unable to stat qemu save file %s\n",
+                   filename);
         ret = ERROR_FAIL;
         goto out;
     }
 
     qemu_state_len = st.st_size;
-    LIBXL__LOG(ctx, LIBXL__LOG_DEBUG, "Qemu state is %d bytes\n", qemu_state_len);
+    LIBXL__LOG(ctx, LIBXL__LOG_DEBUG, "Qemu %u state is %d bytes\n",
+               dmid, qemu_state_len);
 
-    ret = libxl_write_exactly(ctx, fd, QEMU_SIGNATURE, strlen(QEMU_SIGNATURE),
-                              "saved-state file", "qemu signature");
+    ret = libxl_write_exactly(ctx, fd, DM_SIGNATURE, strlen(DM_SIGNATURE),
+                              "saved-state file", "dm signature");
     if (ret)
         goto out;
 
@@ -1087,6 +1089,28 @@ out:
 
 int libxl__domain_save_device_models(libxl__gc *gc, libxl_domid domid, int fd)
 {
+    libxl_ctx *ctx = libxl__gc_owner(gc);
+    int ret = 0;
+    char *path;
+    char **dir = NULL;
+    uint32_t n;
+
+    ret = libxl_write_exactly(ctx, fd, DMS_SIGNATURE, strlen(DMS_SIGNATURE),
+                              "saved-state file", "dms signature");
+    if (ret)
+        return ret;
+
+    path = libxl__sprintf(gc, "/local/domain/0/dms/%u", domid);
+    dir = libxl__xs_directory(gc, XBT_NULL, path, &n);
+
+    if (!dir)
+        return ERROR_INVAL;
+
+    ret = libxl_write_exactly(ctx, fd, &n, sizeof(n), "saved-state file",
+                              "num dms");
+    if (ret)
+        return ret;
+
     return libxl__browse_device_models(gc, domid,
                                        libxl__domain_save_device_model,
                                        1, &fd);

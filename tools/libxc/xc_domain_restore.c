@@ -99,6 +99,8 @@ static ssize_t rdexact(xc_interface *xch, struct restore_ctx *ctx,
     return 0;
 }
 
+#define QEMUSIG_SIZE 21
+
 #define RDEXACT(fd,buf,size) rdexact(xch, ctx, fd, buf, size)
 #else
 #define RDEXACT read_exact
@@ -342,8 +344,11 @@ typedef struct {
                 uint32_t version;
                 uint64_t len;
             } qemuhdr;
-            uint32_t qemubufsize;
-            uint8_t* qemubuf;
+            uint32_t num_dms;
+            struct devmodel_buffer {
+                uint32_t size;
+                uint8_t* buf;
+            } *dmsbuf;
         } hvm;
     } u;
 } tailbuf_t;
@@ -392,63 +397,112 @@ static int compat_buffer_qemu(xc_interface *xch, struct restore_ctx *ctx,
         return -1;
     }
 
-    buf->qemubuf = qbuf;
-    buf->qemubufsize = dlen;
+    if ( !(buf->dmsbuf = calloc(1, sizeof(*buf->dmsbuf))) ) {
+        ERROR("Error allocating Device Model buffer");
+        free(qbuf);
+        return -1;
+    }
+
+    buf->dmsbuf[0].buf = qbuf;
+    buf->dmsbuf[0].size = dlen;
+    buf->num_dms = 1;
 
     return 0;
 }
 
 static int buffer_qemu(xc_interface *xch, struct restore_ctx *ctx,
-                       int fd, struct tailbuf_hvm *buf)
+                       uint32_t dmid, int fd, struct tailbuf_hvm *buf)
 {
     uint32_t qlen;
     uint8_t *tmp;
+    struct devmodel_buffer *dmb = &buf->dmsbuf[dmid];
 
     if ( RDEXACT(fd, &qlen, sizeof(qlen)) ) {
-        PERROR("Error reading QEMU header length");
+        PERROR("Error reading Device Model %u header length", dmid);
         return -1;
     }
 
-    if ( qlen > buf->qemubufsize ) {
-        if ( buf->qemubuf) {
-            tmp = realloc(buf->qemubuf, qlen);
+    if ( qlen > dmb->size ) {
+        if ( dmb->buf ) {
+            tmp = realloc(dmb->buf, qlen);
             if ( tmp )
-                buf->qemubuf = tmp;
+                dmb->buf = tmp;
             else {
-                ERROR("Error reallocating QEMU state buffer");
+                ERROR("Error reallocating Device Model %u state buffer", dmid);
                 return -1;
             }
         } else {
-            buf->qemubuf = malloc(qlen);
-            if ( !buf->qemubuf ) {
-                ERROR("Error allocating QEMU state buffer");
+            dmb->buf = malloc(qlen);
+            if ( !dmb->buf ) {
+                ERROR("Error allocating Device Model %u state buffer", dmid);
                 return -1;
             }
         }
     }
-    buf->qemubufsize = qlen;
+    dmb->size = qlen;
 
-    if ( RDEXACT(fd, buf->qemubuf, buf->qemubufsize) ) {
-        PERROR("Error reading QEMU state");
+    if ( RDEXACT(fd, dmb->buf, dmb->size) ) {
+        PERROR("Error reading Device Model %u state", dmid);
         return -1;
     }
 
     return 0;
 }
 
-static int dump_qemu(xc_interface *xch, uint32_t dom, struct tailbuf_hvm *buf)
+static int buffer_device_models(xc_interface *xch, struct restore_ctx *ctx,
+                                int fd, struct tailbuf_hvm *buf)
+{
+    uint32_t i, num_dms;
+    unsigned char qemusig[QEMUSIG_SIZE + 1];
+    int ret = 0;
+
+    if ( RDEXACT(fd, &num_dms, sizeof(num_dms)) ) {
+        PERROR("Error reading num dms");
+        return -1;
+    }
+
+    if ( !(buf->dmsbuf = calloc(num_dms, sizeof (*buf->dmsbuf))) ) {
+        PERROR("Error allocating Device Model buffers");
+        return -1;
+    }
+
+    buf->num_dms = num_dms;
+
+    for ( i = 0; i < num_dms; i++ ) {
+        if ( RDEXACT(fd, qemusig, QEMUSIG_SIZE) ) {
+            PERROR("Error reading Device Model %u signature", i);
+            return -1;
+        }
+
+        if ( memcmp(qemusig, "DeviceModelRecord0002", QEMUSIG_SIZE) ) {
+            qemusig[QEMUSIG_SIZE] = '\0';
+            ERROR("Invalid Device Model %u signature: %s", i, qemusig);
+            return -1;
+        }
+
+        ret = buffer_qemu(xch, ctx, i, fd, buf);
+        if ( ret )
+            return ret;
+    }
+
+    return 0;
+}
+
+static int dump_qemu(xc_interface *xch, uint32_t dom,
+                     uint32_t dmid, struct tailbuf_hvm *buf)
 {
     int saved_errno;
     char path[256];
     FILE *fp;
+    struct devmodel_buffer *dmb = &buf->dmsbuf[dmid];
 
-    sprintf(path, XC_DEVICE_MODEL_RESTORE_FILE".%u", dom);
+    sprintf(path, XC_DEVICE_MODEL_RESTORE_FILE".%u.%u", dom, dmid);
     fp = fopen(path, "wb");
     if ( !fp )
         return -1;
 
-    DPRINTF("Writing %d bytes of QEMU data\n", buf->qemubufsize);
-    if ( fwrite(buf->qemubuf, 1, buf->qemubufsize, fp) != buf->qemubufsize) {
+    DPRINTF("Writing %d bytes of Device Model %u data\n", dmb->size, dmid);
+    if ( fwrite(dmb->buf, 1, dmb->size, fp) != dmb->size ) {
         saved_errno = errno;
         fclose(fp);
         errno = saved_errno;
@@ -467,7 +521,7 @@ static int buffer_tail_hvm(xc_interface *xch, struct restore_ctx *ctx,
                            int vcpuextstate, uint32_t vcpuextstate_size)
 {
     uint8_t *tmp;
-    unsigned char qemusig[21];
+    unsigned char qemusig[QEMUSIG_SIZE + 1];
 
     if ( RDEXACT(fd, buf->magicpfns, sizeof(buf->magicpfns)) ) {
         PERROR("Error reading magic PFNs");
@@ -504,7 +558,7 @@ static int buffer_tail_hvm(xc_interface *xch, struct restore_ctx *ctx,
         return -1;
     }
 
-    if ( RDEXACT(fd, qemusig, sizeof(qemusig)) ) {
+    if ( RDEXACT(fd, qemusig, QEMUSIG_SIZE) ) {
         PERROR("Error reading QEMU signature");
         return -1;
     }
@@ -517,13 +571,22 @@ static int buffer_tail_hvm(xc_interface *xch, struct restore_ctx *ctx,
      * live-migration QEMU record and Remus which includes a length
      * prefix
      */
-    if ( !memcmp(qemusig, "QemuDeviceModelRecord", sizeof(qemusig)) )
+    if ( !memcmp(qemusig, "QemuDeviceModelRecord", QEMUSIG_SIZE) )
         return compat_buffer_qemu(xch, ctx, fd, buf);
-    else if ( !memcmp(qemusig, "DeviceModelRecord0002", sizeof(qemusig)) ||
-              !memcmp(qemusig, "RemusDeviceModelState", sizeof(qemusig)) )
-        return buffer_qemu(xch, ctx, fd, buf);
+    else if ( !memcmp(qemusig, "DeviceModelRecord0002", QEMUSIG_SIZE) ||
+              !memcmp(qemusig, "RemusDeviceModelState", QEMUSIG_SIZE) )
+    {
+        if ( !(buf->dmsbuf = calloc(1, sizeof (*buf->dmsbuf))) ) {
+            PERROR("Error allocating Device Model buffer");
+            return -1;
+        }
+        return buffer_qemu(xch, ctx, 0, fd, buf);
+    }
+    else if ( !memcmp(qemusig, "DeviceModelRecords001", QEMUSIG_SIZE) ) {
+        return buffer_device_models(xch, ctx, fd, buf);
+   }
 
-    qemusig[20] = '\0';
+    qemusig[QEMUSIG_SIZE] = '\0';
     ERROR("Invalid QEMU signature: %s", qemusig);
     return -1;
 }
@@ -629,13 +692,18 @@ static int buffer_tail(xc_interface *xch, struct restore_ctx *ctx,
 
 static void tailbuf_free_hvm(struct tailbuf_hvm *buf)
 {
+    uint32_t i;
+
     if ( buf->hvmbuf ) {
         free(buf->hvmbuf);
         buf->hvmbuf = NULL;
     }
-    if ( buf->qemubuf ) {
-        free(buf->qemubuf);
-        buf->qemubuf = NULL;
+
+    for (i = 0; i < buf->num_dms; i++)
+    {
+        if (buf->dmsbuf[i].buf)
+            free(buf->dmsbuf[i].buf);
+        buf->dmsbuf[i].buf = NULL;
     }
 }
 
@@ -2125,10 +2193,17 @@ int xc_domain_restore(xc_interface *xch, int io_fd, uint32_t dom,
         }
     }
 
-    /* Dump the QEMU state to a state file for QEMU to load */
-    if ( dump_qemu(xch, dom, &tailbuf.u.hvm) ) {
-        PERROR("Error dumping QEMU state to file");
-        goto out;
+    /**
+     * Dump the each Device Model state to a state file for the Device
+     * Model to load
+     */
+    for ( i = 0; i < tailbuf.u.hvm.num_dms; i++)
+    {
+        if ( dump_qemu(xch, dom, i, &tailbuf.u.hvm) )
+        {
+            PERROR("Error dumping Device Model %u state to file", i);
+            goto out;
+        }
     }
 
     /* These comms pages need to be zeroed at the start of day */
