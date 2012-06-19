@@ -49,6 +49,7 @@ struct hvm_io_range {
 
 struct hvm_ioreq_server {
     unsigned int id;
+    domid_t domid;
     struct hvm_io_range *mmio_range_list;
     struct hvm_io_range *portio_range_list;
     struct hvm_ioreq_server *next;
