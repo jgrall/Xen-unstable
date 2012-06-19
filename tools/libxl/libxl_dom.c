@@ -452,6 +452,7 @@ int libxl__qemu_traditional_cmd(libxl__gc *gc, libxl_domid domid,
 }
 
 struct libxl__physmap_info {
+    libxl_dmid device_model;
     uint64_t phys_offset;
     uint64_t start_addr;
     uint64_t size;
@@ -506,6 +507,10 @@ static int libxl__toolstack_restore(uint32_t domid, uint8_t *buf,
         pi = (struct libxl__physmap_info*) ptr;
         ptr += sizeof(struct libxl__physmap_info) + pi->namelen;
 
+        xs_path = restore_helper(gc, domid, pi->phys_offset, "device_model");
+        ret = libxl__xs_write(gc, 0, xs_path, "%u", pi->device_model);
+        if (ret)
+            return -1;
         xs_path = restore_helper(gc, domid, pi->phys_offset, "start_addr");
         ret = libxl__xs_write(gc, 0, xs_path, "%"PRIx64, pi->start_addr);
         if (ret)
@@ -811,6 +816,7 @@ static int libxl__toolstack_save(uint32_t domid, uint8_t **buf,
     libxl_ctx *ctx = gc->owner;
     int i = 0;
     char *start_addr = NULL, *size = NULL, *phys_offset = NULL, *name = NULL;
+    char *device_model = NULL;
     unsigned int num = 0;
     uint32_t count = 0, version = TOOLSTACK_SAVE_VERSION, namelen = 0;
     uint8_t *ptr = NULL;
@@ -841,6 +847,13 @@ static int libxl__toolstack_save(uint32_t domid, uint8_t **buf,
             return -1;
         }
 
+        xs_path = save_helper(gc, domid, phys_offset, "device_model");
+        device_model = libxl__xs_read(gc, 0, xs_path);
+        if (device_model == NULL) {
+            LIBXL__LOG(ctx, LIBXL__LOG_ERROR, "%s is NULL", xs_path);
+            return -1;
+        }
+
         xs_path = save_helper(gc, domid, phys_offset, "start_addr");
         start_addr = libxl__xs_read(gc, 0, xs_path);
         if (start_addr == NULL) {
@@ -868,6 +881,7 @@ static int libxl__toolstack_save(uint32_t domid, uint8_t **buf,
             return -1;
         ptr = (*buf) + offset;
         pi = (struct libxl__physmap_info *) ptr;
+        pi->device_model = strtol(device_model, NULL, 10);
         pi->phys_offset = strtoll(phys_offset, NULL, 16);
         pi->start_addr = strtoll(start_addr, NULL, 16);
         pi->size = strtoll(size, NULL, 16);

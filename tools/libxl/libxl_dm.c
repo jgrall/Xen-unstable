@@ -1292,9 +1292,12 @@ int libxl__destroy_device_models(libxl__gc *gc,
     ret = libxl__browse_device_models(gc, domid, libxl__destroy_device_model,
                                       0, NULL);
 
-    if (!ret)
+    if (!ret) {
         xs_rm(ctx->xsh, XBT_NULL, libxl__sprintf(gc, "/local/domain/0/dms/%u",
                                                  domid));
+        xs_rm(ctx->xsh, XBT_NULL, libxl__sprintf(gc, "/local/domain/0/device-model/%u",
+                                                 domid));
+    }
     return ret;
 }
 
