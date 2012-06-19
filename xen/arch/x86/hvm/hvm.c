@@ -397,7 +397,7 @@ static int hvm_ioreq_servers_new_vcpu(struct vcpu *v)
         p = s->ioreq.va;
         ASSERT(p != NULL);
 
-        rc = alloc_unbound_xen_event_channel(v, 0, NULL);
+        rc = alloc_unbound_xen_event_channel(v, s->domid, NULL);
         if ( rc < 0 )
             break;
         p->vcpu_ioreq[v->vcpu_id].vp_eport = rc;
@@ -3796,7 +3796,7 @@ static int hvmop_register_ioreq_server(
     int i;
     int rc = 0;
 
-    if ( current->domain->domain_id != 0 )
+    if ( current->domain->domain_id == a->domid)
         return -EINVAL;
 
     rc = rcu_lock_target_domain_by_id(a->domid, &d);
@@ -3826,6 +3826,7 @@ static int hvmop_register_ioreq_server(
     spin_lock(&d->arch.hvm_domain.ioreq_server_lock);
 
     s->id = d->arch.hvm_domain.nr_ioreq_server + 1;
+    s->domid = current->domain->domain_id;
 
     /* Initialize shared pages */
     if ( (rc = hvm_alloc_ioreq_server_page(d, s, &s->ioreq, 0)) )
@@ -3837,14 +3838,14 @@ static int hvmop_register_ioreq_server(
 
     for_each_vcpu ( d, v )
     {
-        rc = alloc_unbound_xen_event_channel(v, 0, NULL);
+        rc = alloc_unbound_xen_event_channel(v, s->domid, NULL);
         if ( rc < 0 )
             goto register_ports;
         p->vcpu_ioreq[v->vcpu_id].vp_eport = rc;
     }
 
     /* Allocate buffer event channel */
-    rc = alloc_unbound_xen_event_channel(d->vcpu[0], 0, NULL);
+    rc = alloc_unbound_xen_event_channel(d->vcpu[0], s->domid, NULL);
 
     if (rc < 0)
         goto register_ports;
