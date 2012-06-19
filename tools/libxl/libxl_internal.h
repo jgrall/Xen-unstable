@@ -93,7 +93,8 @@
 #define LIBXL_MIN_DOM0_MEM (128*1024)
 /* use 0 as the domid of the toolstack domain for now */
 #define LIBXL_TOOLSTACK_DOMID 0
-#define QEMU_SIGNATURE "DeviceModelRecord0002"
+#define DMS_SIGNATURE "DeviceModelRecords001"
+#define DM_SIGNATURE "DeviceModelRecord0002"
 #define STUBDOM_CONSOLE_LOGGING 0
 #define STUBDOM_CONSOLE_SAVE 1
 #define STUBDOM_CONSOLE_RESTORE 2
