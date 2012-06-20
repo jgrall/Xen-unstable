@@ -370,7 +370,6 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
     uint32_t cap_ide = dm_config->capabilities & LIBXL_DM_CAP_IDE;
     uint32_t cap_serial = dm_config->capabilities & LIBXL_DM_CAP_SERIAL;
     uint32_t cap_audio = dm_config->capabilities & LIBXL_DM_CAP_AUDIO;
-    char *ram_base_alloc;
 
     dm_args = flexarray_make(16, 1);
     if (!dm_args)
@@ -555,19 +554,11 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
             flexarray_append(dm_args, b_info->extra_pv[i]);
         break;
     case LIBXL_DOMAIN_TYPE_HVM:
-        if (!dmid)
-            ram_base_alloc = libxl__sprintf(gc, "0x0");
-        else
-            ram_base_alloc = libxl__xs_read(gc, XBT_NULL,
-                                            libxl__sprintf(gc, "/local/domain/0/dms/%u/%u/end_ram",
-                                                           guest_domid,
-                                                           dmid - 1));
         flexarray_append(dm_args,
                          libxl__sprintf(gc,
-                                        "xenfv,xen_dmid=%u,xen_default_dev=%s,xen_emulate_ide=%s,xen_ram_base_alloc=%s",
+                                        "xenfv,xen_dmid=%u,xen_default_dev=%s,xen_emulate_ide=%s",
                                         dmid, (cap_ui) ? "on" : "off",
-                                        (cap_ide) ? "on" : "off",
-                                        ram_base_alloc));
+                                        (cap_ide) ? "on" : "off"));
         for (i = 0; b_info->extra_hvm && b_info->extra_hvm[i] != NULL; i++)
             flexarray_append(dm_args, b_info->extra_hvm[i]);
         break;
