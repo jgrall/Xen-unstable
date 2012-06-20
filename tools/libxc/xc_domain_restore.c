@@ -99,12 +99,13 @@ static ssize_t rdexact(xc_interface *xch, struct restore_ctx *ctx,
     return 0;
 }
 
-#define QEMUSIG_SIZE 21
-
 #define RDEXACT(fd,buf,size) rdexact(xch, ctx, fd, buf, size)
 #else
 #define RDEXACT read_exact
 #endif
+
+#define QEMUSIG_SIZE 21
+
 /*
 ** In the state file (or during transfer), all page-table pages are
 ** converted into a 'canonical' form where references to actual mfns
