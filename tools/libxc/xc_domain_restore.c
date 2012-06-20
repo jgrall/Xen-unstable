@@ -110,12 +110,12 @@ static ssize_t rdexact(xc_interface *xch, struct restore_ctx *ctx,
     return 0;
 }
 
-#define QEMUSIG_SIZE 21
-
 #define RDEXACT(fd,buf,size) rdexact(xch, ctx, fd, buf, size)
 #else
 #define RDEXACT read_exact
 #endif
+
+#define QEMUSIG_SIZE 21
 
 #define SUPERPAGE_PFN_SHIFT  9
 #define SUPERPAGE_NR_PFNS    (1UL << SUPERPAGE_PFN_SHIFT)
@@ -159,6 +159,7 @@ static int alloc_superpage_mfns(
     }
     return 0;
 }
+
 /*
 ** In the state file (or during transfer), all page-table pages are
 ** converted into a 'canonical' form where references to actual mfns
