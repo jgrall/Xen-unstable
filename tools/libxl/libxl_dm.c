@@ -524,7 +524,9 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
         abort();
     }
 
-    ram_size = libxl__sizekb_to_mb(b_info->max_memkb - b_info->video_memkb);
+    // Allocate ram space of 32Mo per previous device model to store rom
+    ram_size = libxl__sizekb_to_mb(b_info->max_memkb - b_info->video_memkb)
+        + 32 * dmid;
     flexarray_append(dm_args, "-m");
     flexarray_append(dm_args, libxl__sprintf(gc, "%"PRId64, ram_size));
 
