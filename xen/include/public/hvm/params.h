@@ -49,12 +49,13 @@
 
 #define HVM_PARAM_PAE_ENABLED  4
 
-#define HVM_PARAM_IOREQ_PFN    5
+#ifdef __ia64__
 
-#define HVM_PARAM_BUFIOREQ_PFN 6
-#define HVM_PARAM_BUFIOREQ_EVTCHN 26
+#define HVM_PARAM_NVRAM_FD     7
+#define HVM_PARAM_VHPT_SIZE    8
+#define HVM_PARAM_BUFPIOREQ_PFN	9
 
-#if defined(__i386__) || defined(__x86_64__)
+#elif defined(__i386__) || defined(__x86_64__)
 
 /* Expose Viridian interfaces to this HVM guest? */
 #define HVM_PARAM_VIRIDIAN     9
