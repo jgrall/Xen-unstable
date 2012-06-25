@@ -49,11 +49,6 @@
 
 #define HVM_PARAM_PAE_ENABLED  4
 
-#define HVM_PARAM_IOREQ_PFN    5
-
-#define HVM_PARAM_BUFIOREQ_PFN 6
-#define HVM_PARAM_BUFIOREQ_EVTCHN 26
-
 #ifdef __ia64__
 
 #define HVM_PARAM_NVRAM_FD     7
