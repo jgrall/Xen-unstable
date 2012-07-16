@@ -15,16 +15,17 @@ include buildconfigs/Rules.mk
 
 # build and install everything into the standard system directories
 .PHONY: install
-install: install-xen install-kernels install-tools install-stubdom install-docs
+install: install-xen install-kernels install-tools
+	# install-stubdom install-docs
 
 .PHONY: build
 build: kernels
 	$(MAKE) -C xen build
 	$(MAKE) -C tools build
-	$(MAKE) -C stubdom build
-ifeq (x86_64,$(XEN_TARGET_ARCH))
-	XEN_TARGET_ARCH=x86_32 $(MAKE) -C stubdom pv-grub
-endif
+#	$(MAKE) -C stubdom build
+#ifeq (x86_64,$(XEN_TARGET_ARCH))
+#	XEN_TARGET_ARCH=x86_32 $(MAKE) -C stubdom pv-grub
+#endif
 	$(MAKE) -C docs build
 
 # The test target is for unit tests that can run without an installation.  Of
@@ -37,7 +38,7 @@ test:
 # build and install everything into local dist directory
 .PHONY: dist
 dist: DESTDIR=$(DISTDIR)/install
-dist: dist-xen dist-kernels dist-tools dist-stubdom dist-docs dist-misc
+dist: dist-xen dist-kernels dist-tools dist-docs dist-misc
 
 dist-misc:
 	$(INSTALL_DIR) $(DISTDIR)/
@@ -49,7 +50,7 @@ dist-%: install-%
 	@: # do nothing
 
 # Legacy dist targets
-.PHONY: xen tools stubdom kernels docs
+.PHONY: xen tools kernels docs
 xen: dist-xen
 tools: dist-tools
 kernels: dist-kernels
