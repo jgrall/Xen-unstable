@@ -1219,8 +1219,6 @@ static void device_model_spawn_outcome(libxl__egc *egc,
         }
     }
 
-    rc = 0;
-
  out:
     dmss->callback(egc, dmss, rc);
 }
