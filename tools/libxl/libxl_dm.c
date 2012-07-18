@@ -424,13 +424,19 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
             flexarray_append(dm_args, spiceoptions);
         }
 
-        switch (b_info->u.hvm.vga.kind) {
-        case LIBXL_VGA_INTERFACE_TYPE_STD:
-            flexarray_vappend(dm_args, "-vga", "std", NULL);
-            break;
-        case LIBXL_VGA_INTERFACE_TYPE_CIRRUS:
-            flexarray_vappend(dm_args, "-vga", "cirrus", NULL);
-            break;
+        if (cap_ui) {
+            switch (b_info->u.hvm.vga.kind) {
+            case LIBXL_VGA_INTERFACE_TYPE_STD:
+                flexarray_append(dm_args, "-device");
+                flexarray_append(dm_args,
+                                 libxl__sprintf(gc, "VGA,addr=%u", bdf++));
+                break;
+            case LIBXL_VGA_INTERFACE_TYPE_CIRRUS:
+                flexarray_append(dm_args, "-device");
+                flexarray_append(dm_args,
+                                 libxl__sprintf(gc, "cirrus-vga,addr=%u", bdf++));
+                break;
+            }
         }
 
         if (b_info->u.hvm.boot) {
