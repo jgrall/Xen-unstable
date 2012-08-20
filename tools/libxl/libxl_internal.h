@@ -892,7 +892,7 @@ _hidden int libxl__build_hvm(libxl__gc *gc, uint32_t domid,
               libxl_domain_build_info *info,
               libxl__domain_build_state *state);
 
-_hidden int libxl__qemu_traditional_cmd(libxl__gc *gc, uint32_t domid,
+_hidden int libxl__qemu_traditional_cmd(libxl__gc *gc, libxl_domid domid,
                                         const char *cmd);
 _hidden int libxl__domain_rename(libxl__gc *gc, uint32_t domid,
                                  const char *old_name, const char *new_name,
@@ -955,6 +955,8 @@ _hidden int libxl__domain_create_info_setdefault(libxl__gc *gc,
                                         libxl_domain_create_info *c_info);
 _hidden int libxl__domain_build_info_setdefault(libxl__gc *gc,
                                         libxl_domain_build_info *b_info);
+_hidden int libxl__dm_setdefault(libxl__gc *gc,
+                                 libxl_dm *dm);
 _hidden int libxl__device_disk_setdefault(libxl__gc *gc,
                                           libxl_device_disk *disk);
 _hidden int libxl__device_nic_setdefault(libxl__gc *gc, libxl_device_nic *nic,
@@ -2466,9 +2468,9 @@ struct libxl__dm_spawn_state {
     libxl_domain_config *guest_config;
     libxl__domain_build_state *build_state; /* relates to guest_domid */
     libxl__dm_spawn_cb *callback;
+    libxl_dmid dmid;
+    struct libxl__domain_create_state *dcs;
 };
-
-_hidden void libxl__spawn_local_dm(libxl__egc *egc, libxl__dm_spawn_state*);
 
 /* Stubdom device models. */
 
@@ -2509,7 +2511,7 @@ struct libxl__domain_create_state {
     int guest_domid;
     libxl__domain_build_state build_state;
     libxl__bootloader_state bl;
-    libxl__stub_dm_spawn_state dmss;
+    libxl__stub_dm_spawn_state* dmss;
         /* If we're not doing stubdom, we use only dmss.dm,
          * for the non-stubdom device model. */
     libxl__save_helper_state shs;

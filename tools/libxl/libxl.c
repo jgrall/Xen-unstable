@@ -1949,6 +1949,13 @@ int libxl_devid_to_device_vtpm(libxl_ctx *ctx,
 
 /******************************************************************************/
 
+int libxl__dm_setdefault(libxl__gc *gc, libxl_dm *dm)
+{
+    return 0;
+}
+
+/******************************************************************************/
+
 int libxl__device_disk_setdefault(libxl__gc *gc, libxl_device_disk *disk)
 {
     int rc;

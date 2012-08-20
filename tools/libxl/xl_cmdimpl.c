@@ -1189,6 +1189,9 @@ static void parse_config_data(const char *config_source,
                 } else if (!strcmp(p, "vifname")) {
                     free(nic->ifname);
                     nic->ifname = strdup(p2 + 1);
+                } else if (!strcmp(p, "id")) {
+                    free(nic->id);
+                    nic->id = strdup(p2 + 1);
                 } else if (!strcmp(p, "backend")) {
                     if(libxl_name_to_domid(ctx, (p2 + 1), &(nic->backend_domid))) {
                         fprintf(stderr, "Specified backend domain does not exist, defaulting to Dom0\n");
@@ -1449,6 +1452,30 @@ skip_vfb:
             }
         }
     }
+
+    d_config->num_dms = 0;
+    d_config->dms = NULL;
+
+    if (b_info->device_model_version == LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN
+        && !xlu_cfg_get_list (config, "device_models", &dms, 0, 0)) {
+        while ((buf = xlu_cfg_get_listitem (dms, d_config->num_dms)) != NULL) {
+            libxl_dm *dm;
+            size_t size = sizeof (libxl_dm) * (d_config->num_dms + 1);
+
+            d_config->dms = (libxl_dm *)realloc (d_config->dms, size);
+            if (!d_config->dms) {
+                fprintf(stderr, "Can't realloc d_config->dms\n");
+                exit (1);
+            }
+            dm = d_config->dms + d_config->num_dms;
+            libxl_dm_init (dm);
+            if (xlu_dm_parse(config, buf, dm)) {
+                exit (-ERROR_FAIL);
+            }
+            d_config->num_dms++;
+        }
+    }
+
 #define parse_extra_args(type)                                            \
     e = xlu_cfg_get_list_as_string_list(config, "device_model_args"#type, \
                                     &b_info->extra##type, 0);            \
