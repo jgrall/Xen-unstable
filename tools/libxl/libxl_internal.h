@@ -868,6 +868,7 @@ typedef struct {
     unsigned long console_mfn;
 
     unsigned long vm_generationid_addr;
+    unsigned long num_dms;
 
     char *saved_state;
 
