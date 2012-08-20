@@ -544,6 +544,7 @@ int libxl__build_hvm(libxl__gc *gc, uint32_t domid,
     libxl_ctx *ctx = libxl__gc_owner(gc);
     int ret, rc = ERROR_FAIL;
     const char *firmware = libxl__domain_firmware(gc, info);
+    libxl_domain_config *d_config = CONTAINER_OF(info, *d_config, b_info);
 
     if (!firmware)
         goto out;
@@ -552,7 +553,8 @@ int libxl__build_hvm(libxl__gc *gc, uint32_t domid,
         domid,
         (info->max_memkb - info->video_memkb) / 1024,
         (info->target_memkb - info->video_memkb) / 1024,
-        firmware);
+        firmware,
+        3);
     if (ret) {
         LIBXL__LOG_ERRNOVAL(ctx, LIBXL__LOG_ERROR, ret, "hvm building failed");
         goto out;
@@ -570,16 +572,17 @@ out:
     return rc;
 }
 
-int libxl__qemu_traditional_cmd(libxl__gc *gc, uint32_t domid,
+int libxl__qemu_traditional_cmd(libxl__gc *gc, libxl_domid domid,
                                 const char *cmd)
 {
     char *path = NULL;
-    path = libxl__sprintf(gc, "/local/domain/0/device-model/%d/command",
+    path = libxl__sprintf(gc, "/local/domain/0/dms/%u/command",
                           domid);
     return libxl__xs_write(gc, XBT_NULL, path, "%s", cmd);
 }
 
 struct libxl__physmap_info {
+    libxl_dmid device_model;
     uint64_t phys_offset;
     uint64_t start_addr;
     uint64_t size;
@@ -638,6 +641,10 @@ int libxl__toolstack_restore(uint32_t domid, const uint8_t *buf,
         pi = (struct libxl__physmap_info*) ptr;
         ptr += sizeof(struct libxl__physmap_info) + pi->namelen;
 
+        xs_path = restore_helper(gc, domid, pi->phys_offset, "device_model");
+        ret = libxl__xs_write(gc, 0, xs_path, "%u", pi->device_model);
+        if (ret)
+            return -1;
         xs_path = restore_helper(gc, domid, pi->phys_offset, "start_addr");
         ret = libxl__xs_write(gc, 0, xs_path, "%"PRIx64, pi->start_addr);
         if (ret)
@@ -868,17 +875,27 @@ int libxl__domain_suspend_device_model(libxl__gc *gc,
     return ret;
 }
 
-int libxl__domain_resume_device_model(libxl__gc *gc, uint32_t domid)
+int libxl__domain_suspend_device_models(libxl__gc *gc, libxl_domid domid)
 {
+    return libxl__browse_device_models(gc, domid,
+                                       libxl__domain_suspend_device_model,
+                                       1, NULL);
+}
+
+static int libxl__domain_resume_device_model(libxl__gc *gc, libxl_domid domid,
+                                             libxl_dmid dmid, void *args)
+{
+    (void) args;
 
     switch (libxl__device_model_version_running(gc, domid)) {
     case LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN_TRADITIONAL: {
         libxl__qemu_traditional_cmd(gc, domid, "continue");
-        libxl__wait_for_device_model(gc, domid, "running", NULL, NULL, NULL);
+        libxl__wait_for_device_model(gc, domid, dmid, "running", NULL, NULL,
+                                     NULL);
         break;
     }
     case LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN:
-        if (libxl__qmp_resume(gc, domid))
+        if (libxl__qmp_resume(gc, domid, dmid))
             return ERROR_FAIL;
     default:
         return ERROR_INVAL;
@@ -1036,6 +1053,7 @@ int libxl__toolstack_save(uint32_t domid, uint8_t **buf,
     STATE_AO_GC(dss->ao);
     int i = 0;
     char *start_addr = NULL, *size = NULL, *phys_offset = NULL, *name = NULL;
+    char *device_model = NULL;
     unsigned int num = 0;
     uint32_t count = 0, version = TOOLSTACK_SAVE_VERSION, namelen = 0;
     uint8_t *ptr = NULL;
@@ -1093,6 +1111,7 @@ int libxl__toolstack_save(uint32_t domid, uint8_t **buf,
             return -1;
         ptr = (*buf) + offset;
         pi = (struct libxl__physmap_info *) ptr;
+        pi->device_model = strtol(device_model, NULL, 10);
         pi->phys_offset = strtoll(phys_offset, NULL, 16);
         pi->start_addr = strtoll(start_addr, NULL, 16);
         pi->size = strtoll(size, NULL, 16);
@@ -1394,6 +1413,35 @@ static void domain_suspend_done(libxl__egc *egc,
 }
 
 /*==================== Miscellaneous ====================*/
+
+int libxl__domain_save_device_models(libxl__gc *gc, libxl_domid domid, int fd)
+{
+    libxl_ctx *ctx = libxl__gc_owner(gc);
+    int ret = 0;
+    char *path;
+    char **dir = NULL;
+    uint32_t n;
+
+    ret = libxl_write_exactly(ctx, fd, DMS_SIGNATURE, strlen(DMS_SIGNATURE),
+                              "saved-state file", "dms signature");
+    if (ret)
+        return ret;
+
+    path = libxl__sprintf(gc, "/local/domain/0/dms/%u", domid);
+    dir = libxl__xs_directory(gc, XBT_NULL, path, &n);
+
+    if (!dir)
+        return ERROR_INVAL;
+
+    ret = libxl_write_exactly(ctx, fd, &n, sizeof(n), "saved-state file",
+                              "num dms");
+    if (ret)
+        return ret;
+
+    return libxl__browse_device_models(gc, domid,
+                                       libxl__domain_save_device_model,
+                                       1, &fd);
+}
 
 char *libxl__uuid2string(libxl__gc *gc, const libxl_uuid uuid)
 {
