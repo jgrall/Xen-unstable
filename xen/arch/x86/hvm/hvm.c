@@ -3783,21 +3783,6 @@ static int hvmop_flush_tlb_all(void)
     return 0;
 }
 
-static int hvm_replace_event_channel(struct vcpu *v, domid_t remote_domid,
-                                     int *p_port)
-{
-    int old_port, new_port;
-
-    new_port = alloc_unbound_xen_event_channel(v, remote_domid, NULL);
-    if ( new_port < 0 )
-        return new_port;
-
-    /* xchg() ensures that only we call free_xen_event_channel(). */
-    old_port = xchg(p_port, new_port);
-    free_xen_event_channel(v, old_port);
-    return 0;
-}
-
 static int hvm_alloc_ioreq_server_page(struct domain *d,
                                        struct hvm_ioreq_server *s,
                                        struct hvm_ioreq_page *pfn,
