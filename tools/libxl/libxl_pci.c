@@ -806,12 +806,10 @@ static int qemu_pci_add_xenstore(libxl__gc *gc, uint32_t domid,
     char *path;
     char *state, *vdevfn;
 
-    /* Fix to support multiple device models */
-    path = libxl__sprintf(gc, "/local/domain/0/dms/%u/%u/state",
-                          domid, 0);
+    path = libxl__sprintf(gc, "/local/domain/0/device-model/%d/state", domid);
     state = libxl__xs_read(gc, XBT_NULL, path);
-    path = libxl__sprintf(gc, "/local/domain/0/dms/%u/%u/parameter",
-                          domid, 0);
+    path = libxl__sprintf(gc, "/local/domain/0/device-model/%d/parameter",
+                          domid);
     if (pcidev->vdevfn) {
         libxl__xs_write(gc, XBT_NULL, path, PCI_BDF_VDEVFN","PCI_OPTIONS,
                         pcidev->domain, pcidev->bus, pcidev->dev,
@@ -826,11 +824,10 @@ static int qemu_pci_add_xenstore(libxl__gc *gc, uint32_t domid,
     libxl__qemu_traditional_cmd(gc, domid, "pci-ins");
     rc = libxl__wait_for_device_model(gc, domid, 0, NULL, NULL,
                                       pci_ins_check, state);
-    path = libxl__sprintf(gc, "/local/domain/0/dms/%u/%u/parameter",
-                          domid, 0);
+    path = libxl__sprintf(gc, "/local/domain/0/device-model/%d/parameter",
+                          domid);
     vdevfn = libxl__xs_read(gc, XBT_NULL, path);
-    path = libxl__sprintf(gc, "/local/domain/0/dms/%u/%u/state",
-                          domid, 0);
+    path = libxl__sprintf(gc, "/local/domain/0/dms/%d/state", domid);
     if ( rc < 0 )
         LIBXL__LOG(ctx, LIBXL__LOG_ERROR,
                    "qemu refused to add device: %s", vdevfn);
@@ -844,15 +841,18 @@ static int qemu_pci_add_xenstore(libxl__gc *gc, uint32_t domid,
     return rc;
 }
 
-static int do_pci_add(libxl__gc *gc, uint32_t domid, libxl_device_pci *pcidev, int starting)
+static int do_pci_add(libxl__gc *gc, libxl_domid domid,
+                      libxl_device_pci *pcidev, int starting)
 {
     libxl_ctx *ctx = libxl__gc_owner(gc);
     int rc, hvm = 0;
+    /* FIXME: handle multiple device model */
+    libxl_dmid dmid = 0;
 
     switch (libxl__domain_type(gc, domid)) {
     case LIBXL_DOMAIN_TYPE_HVM:
         hvm = 1;
-        if (libxl__wait_for_device_model(gc, domid, 0, "running",
+        if (libxl__wait_for_device_model(gc, domid, dmid, "running",
                                          NULL, NULL, NULL) < 0) {
             return ERROR_FAIL;
         }
@@ -861,7 +861,7 @@ static int do_pci_add(libxl__gc *gc, uint32_t domid, libxl_device_pci *pcidev, i
                 rc = qemu_pci_add_xenstore(gc, domid, pcidev);
                 break;
             case LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN:
-                rc = libxl__qmp_pci_add(gc, domid, 0, pcidev);
+                rc = libxl__qmp_pci_add(gc, domid, dmid, pcidev);
                 break;
             default:
                 return ERROR_INVAL;
@@ -1006,6 +1006,7 @@ int libxl_device_pci_add(libxl_ctx *ctx, uint32_t domid,
 {
     AO_CREATE(ctx, domid, ao_how);
     int rc;
+
     rc = libxl__device_pci_add(gc, domid, pcidev, 0);
     libxl__ao_complete(egc, ao, rc);
     return AO_INPROGRESS;
@@ -1029,7 +1030,8 @@ static int libxl_pcidev_assignable(libxl_ctx *ctx, libxl_device_pci *pcidev)
     return 0;
 }
 
-int libxl__device_pci_add(libxl__gc *gc, uint32_t domid, libxl_device_pci *pcidev, int starting)
+int libxl__device_pci_add(libxl__gc *gc, libxl_domid domid,
+                          libxl_device_pci *pcidev, int starting)
 {
     libxl_ctx *ctx = libxl__gc_owner(gc);
     unsigned int orig_vdev, pfunc_mask;
@@ -1116,9 +1118,10 @@ static int qemu_pci_remove_xenstore(libxl__gc *gc, uint32_t domid,
     char *state;
     char *path;
 
-    path = libxl__sprintf(gc, "/local/domain/0/dms/%u/%u/state", domid, 0);
+    path = libxl__sprintf(gc, "/local/domain/0/device-model/%d/state", domid);
     state = libxl__xs_read(gc, XBT_NULL, path);
-    path = libxl__sprintf(gc, "/local/domain/0/dms/%u/%u/parameter", domid, 0);
+    path = libxl__sprintf(gc, "/local/domain/0/device-model/%d/parameter",
+                          domid);
     libxl__xs_write(gc, XBT_NULL, path, PCI_BDF, pcidev->domain,
                     pcidev->bus, pcidev->dev, pcidev->func);
 
@@ -1136,7 +1139,7 @@ static int qemu_pci_remove_xenstore(libxl__gc *gc, uint32_t domid,
             return ERROR_FAIL;
         }
     }
-    path = libxl__sprintf(gc, "/local/domain/0/dms/%u/%u/state", domid, 0);
+    path = libxl__sprintf(gc, "/local/domain/0/dms/%d/state", domid);
     xs_write(ctx->xsh, XBT_NULL, path, state, strlen(state));
 
     return 0;
@@ -1145,13 +1148,15 @@ static int qemu_pci_remove_xenstore(libxl__gc *gc, uint32_t domid,
 static int libxl__device_pci_remove_common(libxl__gc *gc, uint32_t domid,
                                            libxl_device_pci *pcidev, int force);
 
-static int do_pci_remove(libxl__gc *gc, uint32_t domid,
+static int do_pci_remove(libxl__gc *gc, libxl_domid domid,
                          libxl_device_pci *pcidev, int force)
 {
     libxl_ctx *ctx = libxl__gc_owner(gc);
     libxl_device_pci *assigned;
     int hvm = 0, rc, num;
     int stubdomid = 0;
+    /* FIXME: Handle multiple device model */
+    libxl_dmid dmid = 0;
 
     assigned = libxl_device_pci_list(ctx, domid, &num);
     if ( assigned == NULL )
@@ -1168,7 +1173,7 @@ static int do_pci_remove(libxl__gc *gc, uint32_t domid,
     switch (libxl__domain_type(gc, domid)) {
     case LIBXL_DOMAIN_TYPE_HVM:
         hvm = 1;
-        if (libxl__wait_for_device_model(gc, domid, 0, "running",
+        if (libxl__wait_for_device_model(gc, domid, dmid, "running",
                                          NULL, NULL, NULL) < 0)
             goto out_fail;
 
@@ -1177,7 +1182,7 @@ static int do_pci_remove(libxl__gc *gc, uint32_t domid,
             rc = qemu_pci_remove_xenstore(gc, domid, pcidev, force);
             break;
         case LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN:
-            rc = libxl__qmp_pci_del(gc, domid, 0, pcidev);
+            rc = libxl__qmp_pci_del(gc, domid, dmid, pcidev);
             break;
         default:
             rc = ERROR_INVAL;

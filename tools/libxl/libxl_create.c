@@ -702,9 +702,11 @@ static void initiate_domain_create(libxl__egc *egc,
     }
 
     dcs->guest_domid = domid;
-    dcs->dmss.dm.guest_domid = 0; /* means we haven't spawned */
 
     ret = libxl__domain_build_info_setdefault(gc, &d_config->b_info);
+    if (ret) goto error_out;
+
+    ret = libxl__domain_config_setdefault(gc, d_config);
     if (ret) goto error_out;
 
     if (!sched_params_valid(gc, domid, &d_config->b_info.sched_params)) {
@@ -716,6 +718,14 @@ static void initiate_domain_create(libxl__egc *egc,
     for (i = 0; i < d_config->num_disks; i++) {
         ret = libxl__device_disk_setdefault(gc, &d_config->disks[i]);
         if (ret) goto error_out;
+    }
+
+    dcs->current_dmid = 0;
+    GCNEW_ARRAY(dcs->dmss, d_config->num_dms);
+
+    for (i = 0; i < d_config->num_dms; i++) {
+        dcs->dmss[i].dm.guest_domid = 0; /* Means we haven't spawned */
+        dcs->dmss[i].dm.dcs = dcs;
     }
 
     dcs->bl.ao = ao;
@@ -806,15 +816,6 @@ static void domcreate_bootloader_done(libxl__egc *egc,
      * been initialised by the bootloader already.
      */
     state->pv_cmdline = bl->cmdline;
-
-    /* We might be going to call libxl__spawn_local_dm, or _spawn_stub_dm.
-     * Fill in any field required by either, including both relevant
-     * callbacks (_spawn_stub_dm will overwrite our trespass if needed). */
-    dcs->dmss.dm.spawn.ao = ao;
-    dcs->dmss.dm.guest_config = dcs->guest_config;
-    dcs->dmss.dm.build_state = &dcs->build_state;
-    dcs->dmss.dm.callback = domcreate_devmodel_started;
-    dcs->dmss.callback = domcreate_devmodel_started;
 
     if ( restore_fd < 0 ) {
         rc = libxl__domain_build(gc, &d_config->b_info, domid, state);
@@ -1079,7 +1080,7 @@ static void domcreate_launch_dm(libxl__egc *egc, libxl__multidev *multidev,
         libxl__device_vkb_add(gc, domid, &vkb);
         libxl_device_vkb_dispose(&vkb);
 
-        domcreate_spawn_devmodel(egc, dcs, 0);
+        domcreate_spawn_devmodel(egc, dcs, dcs->current_dmid);
         return;
     }
     case LIBXL_DOMAIN_TYPE_PV:
@@ -1105,7 +1106,7 @@ static void domcreate_launch_dm(libxl__egc *egc, libxl__multidev *multidev,
 
         if (need_qemu) {
             assert(dcs->dmss);
-            domcreate_spawn_devmodel(egc, dcs, 0);
+            domcreate_spawn_devmodel(egc, dcs, dcs->current_dmid);
             return;
         } else {
             assert(!dcs->dmss);
@@ -1144,7 +1145,7 @@ static void domcreate_devmodel_started(libxl__egc *egc,
     if (dmss->guest_domid) {
         if (d_config->b_info.device_model_version
             == LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN) {
-            libxl__qmp_initializations(gc, domid, 0, d_config);
+            libxl__qmp_initializations(gc, domid, dmss->dmid, d_config);
         }
     }
 
@@ -1216,8 +1217,11 @@ static void domcreate_attach_pci(libxl__egc *egc, libxl__multidev *multidev,
         goto error_out;
     }
 
+    /* TO FIX: for the moment only add to device model 0 */
+
     for (i = 0; i < d_config->num_pcidevs; i++)
-        libxl__device_pci_add(gc, domid, &d_config->pcidevs[i], 1);
+        libxl__device_pci_add(gc, domid,
+                              &d_config->pcidevs[i], 1);
 
     if (d_config->num_pcidevs > 0) {
         ret = libxl__create_pci_backend(gc, domid, d_config->pcidevs,
@@ -1229,12 +1233,14 @@ static void domcreate_attach_pci(libxl__egc *egc, libxl__multidev *multidev,
         }
     }
 
-    if ((dmss->dmid + 1) >= dcs->guest_config->num_dms) {
+    dcs->current_dmid++;
+
+    if (dcs->current_dmid >= dcs->guest_config->num_dms) {
         libxl__arch_domain_create(gc, d_config, domid);
         domcreate_console_available(egc, dcs);
         domcreate_complete(egc, dcs, 0);
     } else {
-        domcreate_spawn_devmodel(egc, dcs, dmss->dmid + 1);
+        domcreate_spawn_devmodel(egc, dcs, dcs->current_dmid);
     }
 
     return;

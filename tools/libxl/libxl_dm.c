@@ -110,7 +110,7 @@ static char ** libxl__build_device_model_args_old(libxl__gc *gc,
     const libxl_domain_create_info *c_info = &guest_config->c_info;
     const libxl_domain_build_info *b_info = &guest_config->b_info;
     const libxl_device_nic *nics = guest_config->nics;
-    const libxl_vnc_info *vnc = libxl__dm_vnc(guest_config);
+    const libxl_vnc_info *vnc = libxl__dm_vnc(0, guest_config);
     const libxl_sdl_info *sdl = dm_sdl(guest_config);
     const int num_nics = guest_config->num_nics;
     const char *keymap = dm_keymap(guest_config);
@@ -325,24 +325,58 @@ static char *dm_spice_options(libxl__gc *gc,
     return opt;
 }
 
+static int libxl__dm_has_vif(const char *vifname, libxl_dmid dmid,
+                             const libxl_domain_config *guest_config)
+{
+    const libxl_dm *dm_config = &guest_config->dms[dmid];
+    int i = 0;
+
+    if (!vifname && (dm_config->capabilities & LIBXL_DM_CAP_UI))
+        return 1;
+
+    if (!dm_config->vifs)
+        return 0;
+
+    for (i = 0; dm_config->vifs[i]; i++) {
+        if (!strcmp(dm_config->vifs[i], vifname))
+            return 1;
+    }
+
+    return 0;
+}
+
 static char ** libxl__build_device_model_args_new(libxl__gc *gc,
-                                        const char *dm, int guest_domid,
+                                        const char *dm, libxl_dmid guest_domid,
+                                        libxl_dmid dmid,
                                         const libxl_domain_config *guest_config,
                                         const libxl__domain_build_state *state)
 {
+    /**
+     * PCI device number. Before 3, we have IDE, ISA, SouthBridge and
+     * XEN PCI. Theses devices will be emulate in each QEMU, but only
+     * one QEMU (the one which emulates default device) will register
+     * these devices through Xen PCI hypercall.
+     */
+    static unsigned int bdf = 3;
+
     libxl_ctx *ctx = libxl__gc_owner(gc);
     const libxl_domain_create_info *c_info = &guest_config->c_info;
     const libxl_domain_build_info *b_info = &guest_config->b_info;
+    const libxl_dm *dm_config = &guest_config->dms[dmid];
     const libxl_device_disk *disks = guest_config->disks;
     const libxl_device_nic *nics = guest_config->nics;
     const int num_disks = guest_config->num_disks;
     const int num_nics = guest_config->num_nics;
-    const libxl_vnc_info *vnc = libxl__dm_vnc(guest_config);
+    const libxl_vnc_info *vnc = libxl__dm_vnc(dmid, guest_config);
     const libxl_sdl_info *sdl = dm_sdl(guest_config);
     const char *keymap = dm_keymap(guest_config);
     flexarray_t *dm_args;
     int i;
     uint64_t ram_size;
+    uint32_t cap_ui = dm_config->capabilities & LIBXL_DM_CAP_UI;
+    uint32_t cap_ide = dm_config->capabilities & LIBXL_DM_CAP_IDE;
+    uint32_t cap_serial = dm_config->capabilities & LIBXL_DM_CAP_SERIAL;
+    uint32_t cap_audio = dm_config->capabilities & LIBXL_DM_CAP_AUDIO;
 
     dm_args = flexarray_make(gc, 16, 1);
 
@@ -424,9 +458,17 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
             flexarray_append(dm_args, "-nographic");
         }
         else {
-            flexarray_append(dm_args, "-device");
-            flexarray_append(dm_args,
-                             libxl__sprintf(gc, "VGA,addr=%u", bdf++));
+            switch (b_info->u.hvm.vga.kind) {
+            case LIBXL_VGA_INTERFACE_TYPE_STD:
+                flexarray_vappend(dm_args, "-device",
+                                  GCSPRINTF("VGA,addr=%u", bdf++), NULL);
+                break;
+            case LIBXL_VGA_INTERFACE_TYPE_CIRRUS:
+                flexarray_vappend(dm_args, "-",
+                                  GCSPRINTF("cirrus-vga,addr=%u", bdf++),
+                                  NULL);
+                break;
+            }
         }
 
         if (libxl_defbool_val(b_info->u.hvm.spice.enable)) {
@@ -437,15 +479,6 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
 
             flexarray_append(dm_args, "-spice");
             flexarray_append(dm_args, spiceoptions);
-        }
-
-        switch (b_info->u.hvm.vga.kind) {
-        case LIBXL_VGA_INTERFACE_TYPE_STD:
-            flexarray_vappend(dm_args, "-vga", "std", NULL);
-            break;
-        case LIBXL_VGA_INTERFACE_TYPE_CIRRUS:
-            flexarray_vappend(dm_args, "-vga", "cirrus", NULL);
-            break;
         }
 
         if (b_info->u.hvm.boot) {
@@ -480,7 +513,8 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
                                                          b_info->max_vcpus));
         }
         for (i = 0; i < num_nics; i++) {
-            if (nics[i].nictype == LIBXL_NIC_TYPE_VIF_IOEMU) {
+            if (nics[i].nictype == LIBXL_NIC_TYPE_VIF_IOEMU
+                && libxl__dm_has_vif(nics[i].id, dmid, guest_config)) {
                 char *smac = libxl__sprintf(gc,
                                 LIBXL_MAC_FMT, LIBXL_MAC_BYTES(nics[i].mac));
                 const char *ifname = libxl__device_nic_devname(gc,
@@ -488,9 +522,9 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
                                                 LIBXL_NIC_TYPE_VIF_IOEMU);
                 flexarray_append(dm_args, "-device");
                 flexarray_append(dm_args,
-                   libxl__sprintf(gc, "%s,id=nic%d,netdev=net%d,mac=%s",
-                                                nics[i].model, nics[i].devid,
-                                                nics[i].devid, smac));
+                            GCSPRINTF("%s,id=nic%d,netdev=net%d,mac=%s,addr=%u",
+                                      nics[i].model, nics[i].devid,
+                                      nics[i].devid, smac, bdf++));
                 flexarray_append(dm_args, "-netdev");
                 flexarray_append(dm_args, GCSPRINTF(
                                           "type=tap,id=net%d,ifname=%s,"
@@ -780,7 +814,8 @@ char *libxl__stub_dm_name(libxl__gc *gc, const char *guest_name)
     return libxl__sprintf(gc, "%s-dm", guest_name);
 }
 
-void libxl__spawn_stub_dm(libxl__egc *egc, libxl__stub_dm_spawn_state *sdss)
+static void libxl__spawn_stub_dm(libxl__egc *egc,
+                                 libxl__stub_dm_spawn_state *sdss)
 {
     STATE_AO_GC(sdss->dm.spawn.ao);
     libxl_ctx *ctx = libxl__gc_owner(gc);
@@ -919,12 +954,16 @@ out:
     spawn_stubdom_pvqemu_cb(egc, &sdss->pvqemu, ret);
 }
 
+static void libxl__spawn_local_dm(libxl__egc *egc,
+                                  libxl__dm_spawn_state *sdss);
+
 static void spawn_stub_launch_dm(libxl__egc *egc,
                                  libxl__multidev *multidev, int ret)
 {
     libxl__stub_dm_spawn_state *sdss = CONTAINER_OF(multidev, *sdss, multidev);
     STATE_AO_GC(sdss->dm.spawn.ao);
     libxl_ctx *ctx = libxl__gc_owner(gc);
+    libxl_dmid dmid = sdss->dm.dmid;
     int i, num_console = STUBDOM_SPECIAL_CONSOLES;
     libxl__device_console *console;
 
@@ -985,7 +1024,8 @@ static void spawn_stub_launch_dm(libxl__egc *egc,
                 break;
             case STUBDOM_CONSOLE_SAVE:
                 console[i].output = libxl__sprintf(gc, "file:%s",
-                                libxl__device_model_savefile(gc, guest_domid, dmid));
+                                libxl__device_model_savefile(gc, guest_domid,
+                                                             dmid));
                 break;
             case STUBDOM_CONSOLE_RESTORE:
                 if (d_state->saved_state)
@@ -1311,12 +1351,16 @@ static void device_model_spawn_outcome(libxl__egc *egc,
     dmss->callback(egc, dmss, rc);
 }
 
-int libxl__destroy_device_model(libxl__gc *gc, uint32_t domid)
+static int libxl__destroy_device_model(libxl__gc *gc, libxl_domid domid,
+                                       libxl_dmid dmid, void *args)
 {
     char *pid;
     int ret;
 
-    pid = libxl__xs_read(gc, XBT_NULL, libxl__sprintf(gc, "/local/domain/%d/image/device-model-pid", domid));
+    (void) args;
+
+    pid = libxl__xs_read(gc, XBT_NULL, GCSPRINTF("/local/domain/%u/image/dms/%u-pid",
+                                                 domid, dmid));
     if (!pid || !atoi(pid)) {
         LOG(ERROR, "could not find device-model's pid for dom %u", domid);
         ret = ERROR_FAIL;
@@ -1381,6 +1425,56 @@ int libxl__need_xenpv_qemu(libxl__gc *gc,
 out:
     return ret;
 }
+
+int libxl__browse_device_models(libxl__gc *gc, libxl_domid domid,
+                                libxl__device_model_cb *cb,
+                                int exit_on_error, void *args)
+{
+    int ret = 0;
+    int tmp = 0;
+    char **dir = NULL;
+    unsigned int n;
+    char *path;
+    unsigned int i = 0;
+    libxl_dmid dmid;
+
+    path = libxl__sprintf(gc, "/local/domain/0/dms/%u", domid);
+
+    dir = libxl__xs_directory(gc, XBT_NULL, path, &n);
+    if (dir) {
+        for (i = 0; i < n; i++) {
+            /* The current format is n-pid, so we retrieve only the dmid */
+            dmid = atoi(dir[i]);
+            tmp = cb(gc, domid, dmid, args);
+            if (tmp) {
+                ret = (ret) ? ret : tmp;
+                if (exit_on_error)
+                    return ret;
+            }
+        }
+    } else
+        return ERROR_INVAL;
+
+    return ret;
+}
+
+int libxl__destroy_device_models(libxl__gc *gc,
+                                 libxl_domid domid)
+{
+    libxl_ctx *ctx = libxl__gc_owner(gc);
+    int ret;
+
+    ret = libxl__browse_device_models(gc, domid, libxl__destroy_device_model,
+                                      0, NULL);
+
+    if (!ret) {
+        xs_rm(ctx->xsh, XBT_NULL, libxl__sprintf(gc, "/local/domain/0/dms/%u",
+                                                 domid));
+        xs_rm(ctx->xsh, XBT_NULL, libxl__sprintf(gc, "/local/domain/0/device-model/%u",
+                                                 domid));
+    }
+     return ret;
+ }
 
 /*
  * Local variables:
