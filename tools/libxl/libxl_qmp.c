@@ -676,7 +676,8 @@ static void qmp_parameters_add_bool(libxl__gc *gc,
  * API
  */
 
-libxl__qmp_handler *libxl__qmp_initialize(libxl__gc *gc, uint32_t domid)
+libxl__qmp_handler *libxl__qmp_initialize(libxl__gc *gc, libxl_domid domid,
+                                          libxl_dmid dmid)
 {
     int ret = 0;
     libxl__qmp_handler *qmp = NULL;
@@ -684,8 +685,8 @@ libxl__qmp_handler *libxl__qmp_initialize(libxl__gc *gc, uint32_t domid)
 
     qmp = qmp_init_handler(gc, domid);
 
-    qmp_socket = libxl__sprintf(gc, "%s/qmp-libxl-%d",
-                                libxl__run_dir_path(), domid);
+    qmp_socket = libxl__sprintf(gc, "%s/qmp-libxl-%u-%u",
+                                libxl__run_dir_path(), domid, dmid);
     if ((ret = qmp_open(qmp, qmp_socket, QMP_SOCKET_CONNECT_TIMEOUT)) < 0) {
         LIBXL__LOG_ERRNO(qmp->ctx, LIBXL__LOG_ERROR, "Connection error");
         qmp_free_handler(qmp);
@@ -717,13 +718,13 @@ void libxl__qmp_close(libxl__qmp_handler *qmp)
     qmp_free_handler(qmp);
 }
 
-void libxl__qmp_cleanup(libxl__gc *gc, uint32_t domid)
+void libxl__qmp_cleanup(libxl__gc *gc, libxl_domid domid, libxl_dmid dmid)
 {
     libxl_ctx *ctx = libxl__gc_owner(gc);
     char *qmp_socket;
 
-    qmp_socket = libxl__sprintf(gc, "%s/qmp-libxl-%d",
-                                libxl__run_dir_path(), domid);
+    qmp_socket = libxl__sprintf(gc, "%s/qmp-libxl-%u-%u",
+                                libxl__run_dir_path(), domid, dmid);
     if (unlink(qmp_socket) == -1) {
         if (errno != ENOENT) {
             LIBXL__LOG_ERRNO(ctx, LIBXL__LOG_ERROR,
@@ -812,14 +813,16 @@ static int qmp_run_command(libxl__gc *gc, int domid,
     return rc;
 }
 
-int libxl__qmp_pci_add(libxl__gc *gc, int domid, libxl_device_pci *pcidev)
+int libxl__qmp_pci_add(libxl__gc *gc, libxl_domid domid,
+                       libxl_dmid dmid,
+                       libxl_device_pci *pcidev)
 {
     libxl__qmp_handler *qmp = NULL;
     libxl__json_object *args = NULL;
     char *hostaddr = NULL;
     int rc = 0;
 
-    qmp = libxl__qmp_initialize(gc, domid);
+    qmp = libxl__qmp_initialize(gc, domid, 0);
     if (!qmp)
         return -1;
 
@@ -848,7 +851,8 @@ int libxl__qmp_pci_add(libxl__gc *gc, int domid, libxl_device_pci *pcidev)
     return rc;
 }
 
-static int qmp_device_del(libxl__gc *gc, int domid, char *id)
+static int qmp_device_del(libxl__gc *gc, libxl_domid domid,
+                          libxl_dmid dmid, char *id)
 {
     libxl__json_object *args = NULL;
 
@@ -856,17 +860,19 @@ static int qmp_device_del(libxl__gc *gc, int domid, char *id)
     return qmp_run_command(gc, domid, "device_del", args, NULL, NULL);
 }
 
-int libxl__qmp_pci_del(libxl__gc *gc, int domid, libxl_device_pci *pcidev)
+int libxl__qmp_pci_del(libxl__gc *gc, libxl_domid domid,
+                       libxl_domid dmid, libxl_device_pci *pcidev)
 {
     char *id = NULL;
 
     id = libxl__sprintf(gc, PCI_PT_QDEV_ID,
                         pcidev->bus, pcidev->dev, pcidev->func);
 
-    return qmp_device_del(gc, domid, id);
+    return qmp_device_del(gc, domid, dmid, id);
 }
 
-int libxl__qmp_save(libxl__gc *gc, int domid, const char *filename)
+int libxl__qmp_save(libxl__gc *gc, libxl_domid domid,
+                    libxl_dmid dmid, const char *filename)
 {
     libxl__json_object *args = NULL;
 
@@ -893,7 +899,7 @@ static int qmp_change(libxl__gc *gc, libxl__qmp_handler *qmp,
     return rc;
 }
 
-int libxl__qmp_stop(libxl__gc *gc, int domid)
+int libxl__qmp_stop(libxl__gc *gc, libxl_domid domid, libxl_dmid dmid)
 {
     return qmp_run_command(gc, domid, "stop", NULL, NULL, NULL);
 }
@@ -929,14 +935,15 @@ int libxl__qmp_insert_cdrom(libxl__gc *gc, int domid,
     }
 }
 
-int libxl__qmp_initializations(libxl__gc *gc, uint32_t domid,
+int libxl__qmp_initializations(libxl__gc *gc, libxl_domid domid,
+                               libxl_dmid dmid,
                                const libxl_domain_config *guest_config)
 {
-    const libxl_vnc_info *vnc = libxl__dm_vnc(guest_config);
+    const libxl_vnc_info *vnc = libxl__dm_vnc(dmid, guest_config);
     libxl__qmp_handler *qmp = NULL;
     int ret = 0;
 
-    qmp = libxl__qmp_initialize(gc, domid);
+    qmp = libxl__qmp_initialize(gc, domid, dmid);
     if (!qmp)
         return -1;
     ret = libxl__qmp_query_serial(qmp);

@@ -35,6 +35,10 @@ void libxl_domain_config_dispose(libxl_domain_config *d_config)
 {
     int i;
 
+    for (i=0; i<d_config->num_dms; i++)
+        libxl_dm_dispose(&d_config->dms[i]);
+    free(d_config->dms);
+
     for (i=0; i<d_config->num_disks; i++)
         libxl_device_disk_dispose(&d_config->disks[i]);
     free(d_config->disks);
@@ -59,6 +63,50 @@ void libxl_domain_config_dispose(libxl_domain_config *d_config)
 
     libxl_domain_create_info_dispose(&d_config->c_info);
     libxl_domain_build_info_dispose(&d_config->b_info);
+}
+
+static int libxl__domain_config_setdefault(libxl__gc *gc,
+                                           libxl_domain_config *d_config)
+{
+    libxl_domain_build_info *b_info = &d_config->b_info;
+    uint64_t cap = 0;
+    int i = 0;
+    int ret = 0;
+    libxl_dm *default_dm = NULL;
+
+    if (b_info->device_model_version == LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN_TRADITIONAL
+        && (d_config->num_dms > 1))
+        return ERROR_INVAL;
+
+    if (!d_config->num_dms) {
+        d_config->dms = malloc(sizeof (*d_config->dms));
+        if (!d_config->dms)
+            return ERROR_NOMEM;
+        libxl_dm_init(d_config->dms);
+        d_config->num_dms = 1;
+    }
+
+    for (i = 0; i < d_config->num_dms; i++)
+    {
+        ret = libxl__dm_setdefault(gc, &d_config->dms[i]);
+        if (ret) return ret;
+
+        if (cap & d_config->dms[i].capabilities)
+            /* Some capabilities are already emulated */
+            return ERROR_INVAL;
+
+        cap |= d_config->dms[i].capabilities;
+        if (d_config->dms[i].capabilities & LIBXL_DM_CAP_UI)
+            default_dm = &d_config->dms[i];
+    }
+
+    if (!default_dm)
+        default_dm = &d_config->dms[0];
+
+    /* The default device model emulates all that the others don't emulate */
+    default_dm->capabilities |= ~cap;
+
+    return ret;
 }
 
 int libxl__domain_create_info_setdefault(libxl__gc *gc,
@@ -147,11 +195,11 @@ int libxl__domain_build_info_setdefault(libxl__gc *gc,
                 LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN_TRADITIONAL;
         else {
             const char *dm;
-            int rc;
+            int rc = 0;
 
             b_info->device_model_version =
                 LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN;
-            dm = libxl__domain_device_model(gc, b_info);
+            dm = libxl__domain_device_model(gc, ~0, b_info);
             rc = access(dm, X_OK);
             if (rc < 0) {
                 /* qemu-xen unavailable, use qemu-xen-traditional */
@@ -713,6 +761,26 @@ static void domcreate_console_available(libxl__egc *egc,
                                         dcs->aop_console_how.for_event));
 }
 
+static void domcreate_spawn_devmodel(libxl__egc *egc,
+                                    libxl__domain_create_state *dcs,
+                                    libxl_dmid dmid)
+{
+    libxl__stub_dm_spawn_state *dmss = &dcs->dmss[dmid];
+    STATE_AO_GC(dcs->ao);
+
+    /* We might be going to call libxl__spawn_local_dm, or _spawn_stub_dm.
+     * Fill in any field required by either, including both relevant
+     * callbacks (_spawn_stub_dm will overwrite our trespass if needed). */
+    dmss->dm.spawn.ao = ao;
+    dmss->dm.guest_config = dcs->guest_config;
+    dmss->dm.build_state = &dcs->build_state;
+    dmss->dm.callback = domcreate_devmodel_started;
+    dmss->callback = domcreate_devmodel_started;
+    dmss->dm.dmid = dmid;
+
+    libxl__spawn_dm(egc, dmss);
+}
+
 static void domcreate_bootloader_done(libxl__egc *egc,
                                       libxl__bootloader_state *bl,
                                       int rc)
@@ -1011,11 +1079,7 @@ static void domcreate_launch_dm(libxl__egc *egc, libxl__multidev *multidev,
         libxl__device_vkb_add(gc, domid, &vkb);
         libxl_device_vkb_dispose(&vkb);
 
-        dcs->dmss.dm.guest_domid = domid;
-        if (libxl_defbool_val(d_config->b_info.device_model_stubdomain))
-            libxl__spawn_stub_dm(egc, &dcs->dmss);
-        else
-            libxl__spawn_local_dm(egc, &dcs->dmss.dm);
+        domcreate_spawn_devmodel(egc, dcs, 0);
         return;
     }
     case LIBXL_DOMAIN_TYPE_PV:
@@ -1040,12 +1104,11 @@ static void domcreate_launch_dm(libxl__egc *egc, libxl__multidev *multidev,
         libxl__device_console_dispose(&console);
 
         if (need_qemu) {
-            dcs->dmss.dm.guest_domid = domid;
-            libxl__spawn_local_dm(egc, &dcs->dmss.dm);
+            assert(dcs->dmss);
+            domcreate_spawn_devmodel(egc, dcs, 0);
             return;
         } else {
-            assert(!dcs->dmss.dm.guest_domid);
-            domcreate_devmodel_started(egc, &dcs->dmss.dm, 0);
+            assert(!dcs->dmss);
             return;
         }
     }
@@ -1064,7 +1127,7 @@ static void domcreate_devmodel_started(libxl__egc *egc,
                                        libxl__dm_spawn_state *dmss,
                                        int ret)
 {
-    libxl__domain_create_state *dcs = CONTAINER_OF(dmss, *dcs, dmss.dm);
+    libxl__domain_create_state *dcs = dmss->dcs;
     STATE_AO_GC(dmss->spawn.ao);
     libxl_ctx *ctx = CTX;
     int domid = dcs->guest_domid;
@@ -1078,10 +1141,10 @@ static void domcreate_devmodel_started(libxl__egc *egc,
         goto error_out;
     }
 
-    if (dcs->dmss.dm.guest_domid) {
+    if (dmss->guest_domid) {
         if (d_config->b_info.device_model_version
             == LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN) {
-            libxl__qmp_initializations(gc, domid, d_config);
+            libxl__qmp_initializations(gc, domid, 0, d_config);
         }
     }
 
@@ -1166,10 +1229,14 @@ static void domcreate_attach_pci(libxl__egc *egc, libxl__multidev *multidev,
         }
     }
 
-    libxl__arch_domain_create(gc, d_config, domid);
-    domcreate_console_available(egc, dcs);
+    if ((dmss->dmid + 1) >= dcs->guest_config->num_dms) {
+        libxl__arch_domain_create(gc, d_config, domid);
+        domcreate_console_available(egc, dcs);
+        domcreate_complete(egc, dcs, 0);
+    } else {
+        domcreate_spawn_devmodel(egc, dcs, dmss->dmid + 1);
+    }
 
-    domcreate_complete(egc, dcs, 0);
     return;
 
 error_out:
