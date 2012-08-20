@@ -416,7 +416,7 @@ int libxl_domain_resume(libxl_ctx *ctx, uint32_t domid, int suspend_cancel)
     }
 
     if (type == LIBXL_DOMAIN_TYPE_HVM) {
-        rc = libxl__domain_resume_device_model(gc, domid);
+        rc = libxl__domain_resume_device_models(gc, domid);
         if (rc) {
             LIBXL__LOG(ctx, LIBXL__LOG_ERROR,
                        "failed to resume device model for domain %u:%d",
@@ -852,8 +852,9 @@ int libxl_domain_unpause(libxl_ctx *ctx, uint32_t domid)
         path = libxl__sprintf(gc, "/local/domain/0/device-model/%d/state", domid);
         state = libxl__xs_read(gc, XBT_NULL, path);
         if (state != NULL && !strcmp(state, "paused")) {
+            /* FIXME: handle multiple qemu */
             libxl__qemu_traditional_cmd(gc, domid, "continue");
-            libxl__wait_for_device_model(gc, domid, "running",
+            libxl__wait_for_device_model(gc, domid, 0, "running",
                                          NULL, NULL, NULL);
         }
     }
@@ -1330,7 +1331,8 @@ static void stubdom_destroy_callback(libxl__egc *egc,
     }
 
     dds->stubdom_finished = 1;
-    savefile = libxl__device_model_savefile(gc, dis->domid);
+    /* FIXME: get dmid */
+    savefile = libxl__device_model_savefile(gc, dis->domid, 0);
     rc = libxl__remove_file(gc, savefile);
     /*
      * On suspend libxl__domain_save_device_model will have already
@@ -1423,10 +1425,8 @@ void libxl__destroy_domid(libxl__egc *egc, libxl__destroy_domid_state *dis)
         LIBXL__LOG_ERRNOVAL(ctx, LIBXL__LOG_ERROR, rc, "xc_domain_pause failed for %d", domid);
     }
     if (dm_present) {
-        if (libxl__destroy_device_model(gc, domid) < 0)
-            LIBXL__LOG(ctx, LIBXL__LOG_ERROR, "libxl__destroy_device_model failed for %d", domid);
-
-        libxl__qmp_cleanup(gc, domid);
+        if (libxl__destroy_device_models(gc, domid) < 0)
+            LIBXL__LOG(ctx, LIBXL__LOG_ERROR, "libxl__destroy_device_models failed for %d", domid);
     }
     dis->drs.ao = ao;
     dis->drs.domid = domid;

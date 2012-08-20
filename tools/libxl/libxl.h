@@ -479,12 +479,14 @@ typedef struct {
     libxl_domain_build_info b_info;
 
     int num_disks, num_nics, num_pcidevs, num_vfbs, num_vkbs;
+    int num_dms;
 
     libxl_device_disk *disks;
     libxl_device_nic *nics;
     libxl_device_pci *pcidevs;
     libxl_device_vfb *vfbs;
     libxl_device_vkb *vkbs;
+    libxl_dm *dms;
 
     libxl_action_on_shutdown on_poweroff;
     libxl_action_on_shutdown on_reboot;
