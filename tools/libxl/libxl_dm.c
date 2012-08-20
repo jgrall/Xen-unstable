@@ -464,7 +464,7 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
                                   GCSPRINTF("VGA,addr=%u", bdf++), NULL);
                 break;
             case LIBXL_VGA_INTERFACE_TYPE_CIRRUS:
-                flexarray_vappend(dm_args, "-",
+                flexarray_vappend(dm_args, "-device",
                                   GCSPRINTF("cirrus-vga,addr=%u", bdf++),
                                   NULL);
                 break;
