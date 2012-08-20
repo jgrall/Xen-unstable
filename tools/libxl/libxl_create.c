@@ -680,6 +680,7 @@ static void initiate_domain_create(libxl__egc *egc,
     }
 
     dcs->current_dmid = 0;
+    dcs->build_state.num_dms = d_config->num_dms;
     GCNEW_ARRAY(dcs->dmss, d_config->num_dms);
 
     for (i = 0; i < d_config->num_dms; i++) {
@@ -1109,7 +1110,7 @@ static void domcreate_devmodel_started(libxl__egc *egc,
     }
 
     /* Plug nic interfaces */
-    if (d_config->num_nics > 0) {
+    if (d_config->num_nics > 0 && dmss->dmid == 0) {
         /* Attach nics */
         libxl__multidev_begin(ao, &dcs->multidev);
         dcs->multidev.callback = domcreate_attach_vtpms;
@@ -1178,17 +1179,19 @@ static void domcreate_attach_pci(libxl__egc *egc, libxl__multidev *multidev,
 
     /* TO FIX: for the moment only add to device model 0 */
 
-    for (i = 0; i < d_config->num_pcidevs; i++)
-        libxl__device_pci_add(gc, domid,
-                              &d_config->pcidevs[i], 1);
+    if (dcs->current_dmid == 0) {
+        for (i = 0; i < d_config->num_pcidevs; i++)
+            libxl__device_pci_add(gc, domid,
+                                  &d_config->pcidevs[i], 1);
 
-    if (d_config->num_pcidevs > 0) {
-        ret = libxl__create_pci_backend(gc, domid, d_config->pcidevs,
-            d_config->num_pcidevs);
-        if (ret < 0) {
-            LIBXL__LOG(ctx, LIBXL__LOG_ERROR,
-                "libxl_create_pci_backend failed: %d", ret);
-            goto error_out;
+        if (d_config->num_pcidevs > 0) {
+            ret = libxl__create_pci_backend(gc, domid, d_config->pcidevs,
+                d_config->num_pcidevs);
+            if (ret < 0) {
+                LIBXL__LOG(ctx, LIBXL__LOG_ERROR,
+                    "libxl_create_pci_backend failed: %d", ret);
+                goto error_out;
+            }
         }
     }
 
