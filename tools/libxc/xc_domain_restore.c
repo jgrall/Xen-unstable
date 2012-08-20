@@ -2324,9 +2324,9 @@ int xc_domain_restore(xc_interface *xch, int io_fd, uint32_t dom,
     }
 
     if ( (frc = xc_set_hvm_param(xch, dom,
-                                 HVM_PARAM_IOREQ_PFN, tailbuf.u.hvm.magicpfns[0]))
+                                 HVM_PARAM_IO_PFN_FIRST, tailbuf.u.hvm.magicpfns[0]))
          || (frc = xc_set_hvm_param(xch, dom,
-                                    HVM_PARAM_BUFIOREQ_PFN, tailbuf.u.hvm.magicpfns[1]))
+                                    HVM_PARAM_IO_PFN_LAST, tailbuf.u.hvm.magicpfns[1]))
          || (frc = xc_set_hvm_param(xch, dom,
                                     HVM_PARAM_STORE_PFN, tailbuf.u.hvm.magicpfns[2]))
          || (frc = xc_set_hvm_param(xch, dom,

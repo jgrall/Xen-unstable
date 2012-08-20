@@ -862,7 +862,7 @@ int xc_domain_save(xc_interface *xch, int io_fd, uint32_t dom, uint32_t max_iter
     uint8_t *hvm_buf = NULL;
 
     /* HVM: magic frames for ioreqs and xenstore comms. */
-    uint64_t magic_pfns[3]; /* ioreq_pfn, bufioreq_pfn, store_pfn */
+    uint64_t magic_pfns[3]; /* io_pfn_first , io_pfn_last, store_pfn */
 
     unsigned long mfn;
 
@@ -1799,9 +1799,9 @@ int xc_domain_save(xc_interface *xch, int io_fd, uint32_t dom, uint32_t max_iter
 
         /* Save magic-page locations. */
         memset(magic_pfns, 0, sizeof(magic_pfns));
-        xc_get_hvm_param(xch, dom, HVM_PARAM_IOREQ_PFN,
+        xc_get_hvm_param(xch, dom, HVM_PARAM_IO_PFN_FIRST,
                          (unsigned long *)&magic_pfns[0]);
-        xc_get_hvm_param(xch, dom, HVM_PARAM_BUFIOREQ_PFN,
+        xc_get_hvm_param(xch, dom, HVM_PARAM_IO_PFN_LAST,
                          (unsigned long *)&magic_pfns[1]);
         xc_get_hvm_param(xch, dom, HVM_PARAM_STORE_PFN,
                          (unsigned long *)&magic_pfns[2]);
