@@ -1161,6 +1161,13 @@ int libxl__toolstack_save(uint32_t domid, uint8_t **buf,
             return -1;
         }
 
+        xs_path = physmap_path(gc, domid, phys_offset, "device_model");
+        device_model = libxl__xs_read(gc, 0, xs_path);
+        if (device_model == NULL) {
+            LOG(ERROR, "%s is NULL", xs_path);
+            return -1;
+        }
+
         xs_path = physmap_path(gc, domid, phys_offset, "start_addr");
         start_addr = libxl__xs_read(gc, 0, xs_path);
         if (start_addr == NULL) {
@@ -1389,10 +1396,9 @@ static void libxl__domain_save_device_model(libxl__egc *egc,
     STATE_AO_GC(dss->ao);
     struct stat st;
     uint32_t qemu_state_len;
+    uint32_t num_dms = dss->num_dms;
     int rc;
     libxl_dmid dmid = dss->dms[dss->current_dm];
-
-//    dss->save_dm_callback = callback;
 
     /* Convenience aliases */
     const char *const filename = libxl__device_model_savefile(gc, dss->domid,
@@ -1433,6 +1439,14 @@ static void libxl__domain_save_device_model(libxl__egc *egc,
 
     rc = libxl__datacopier_start(dc);
     if (rc) goto out;
+
+    /* FIXME: Ugly fix to add DMS_SIGNATURE */
+    if (dss->current_dm == 0) {
+        libxl__datacopier_prefixdata(egc, dc,
+                                     DMS_SIGNATURE, strlen(DMS_SIGNATURE));
+        libxl__datacopier_prefixdata(egc, dc,
+                                     &num_dms, sizeof (num_dms));
+    }
 
     libxl__datacopier_prefixdata(egc, dc,
                                  DM_SIGNATURE, strlen(DM_SIGNATURE));
