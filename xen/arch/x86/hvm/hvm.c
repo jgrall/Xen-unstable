@@ -3819,7 +3819,7 @@ static int hvmop_register_ioreq_server(
     int i;
     int rc = 0;
 
-    if ( current->domain->domain_id == a->domid)
+    if ( current->domain->domain_id == a->domid )
         return -EINVAL;
 
     rc = rcu_lock_target_domain_by_id(a->domid, &d);
