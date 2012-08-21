@@ -4749,7 +4749,8 @@ long do_hvm_op(unsigned long op, XEN_GUEST_HANDLE_PARAM(void) arg)
         if ( copy_from_guest(&a, arg, 1) )
             return -EFAULT;
 
-        rc = hvm_register_pcidev(a.domid, a.id, a.bdf);
+        rc = hvm_register_pcidev(a.domid, a.id, a.domain,
+                                 a.bus, a.device, a.function);
         if ( rc != 0 )
             return rc;
 
