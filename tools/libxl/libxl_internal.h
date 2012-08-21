@@ -1384,26 +1384,32 @@ typedef struct libxl__qmp_handler libxl__qmp_handler;
  *   Return an handler or NULL if there is an error
  */
 _hidden libxl__qmp_handler *libxl__qmp_initialize(libxl__gc *gc,
-                                                  uint32_t domid);
+                                                  libxl_domid domid,
+                                                  libxl_dmid dmid);
 /* ask to QEMU the serial port information and store it in xenstore. */
 _hidden int libxl__qmp_query_serial(libxl__qmp_handler *qmp);
-_hidden int libxl__qmp_pci_add(libxl__gc *gc, int d, libxl_device_pci *pcidev);
-_hidden int libxl__qmp_pci_del(libxl__gc *gc, int domid,
-                               libxl_device_pci *pcidev);
+_hidden int libxl__qmp_pci_add(libxl__gc *gc, libxl_domid d,
+                               libxl_dmid dmid, libxl_device_pci *pcidev);
+_hidden int libxl__qmp_pci_del(libxl__gc *gc, libxl_domid domid,
+                               libxl_dmid dmid, libxl_device_pci *pcidev);
 /* Suspend QEMU. */
-_hidden int libxl__qmp_stop(libxl__gc *gc, int domid);
+_hidden int libxl__qmp_stop(libxl__gc *gc, libxl_domid domid, libxl_dmid dmid);
 /* Resume QEMU. */
-_hidden int libxl__qmp_resume(libxl__gc *gc, int domid);
+_hidden int libxl__qmp_resume(libxl__gc *gc, libxl_domid domid,
+                              libxl_dmid dmid);
 /* Save current QEMU state into fd. */
-_hidden int libxl__qmp_save(libxl__gc *gc, int domid, const char *filename);
+_hidden int libxl__qmp_save(libxl__gc *gc, libxl_domid domid,
+                            libxl_dmid dmid, const char *filename);
 /* close and free the QMP handler */
 _hidden void libxl__qmp_close(libxl__qmp_handler *qmp);
 /* remove the socket file, if the file has already been removed,
  * nothing happen */
-_hidden void libxl__qmp_cleanup(libxl__gc *gc, uint32_t domid);
+_hidden void libxl__qmp_cleanup(libxl__gc *gc, libxl_domid domid,
+                                libxl_dmid dmid);
 
 /* this helper calls qmp_initialize, query_serial and qmp_close */
-_hidden int libxl__qmp_initializations(libxl__gc *gc, uint32_t domid,
+_hidden int libxl__qmp_initializations(libxl__gc *gc, libxl_domid domid,
+                                       libxl_dmid dmid,
                                        const libxl_domain_config *guest_config);
 
 /* on failure, logs */
