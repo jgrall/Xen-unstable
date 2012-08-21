@@ -1307,12 +1307,9 @@ _hidden int libxl__wait_for_device_model(libxl__gc *gc,
                                                       void *userdata),
                                 void *check_callback_userdata);
 
-typedef int libxl__device_model_cb(libxl__gc *gc, libxl_domid domid,
-                                   libxl_dmid dmid, void *args);
-
-_hidden int libxl__browse_device_models(libxl__gc *gc, libxl_domid domid,
-                                        libxl__device_model_cb *cb,
-                                        int exit_on_error, void *arg);
+_hidden libxl_dmid *libxl__list_device_models(libxl__gc *gc,
+                                              libxl_domid domid,
+                                              unsigned int *num_dms);
 
 _hidden int libxl__destroy_device_models(libxl__gc *gc, libxl_domid domid);
 
