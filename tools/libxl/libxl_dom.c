@@ -544,6 +544,7 @@ int libxl__build_hvm(libxl__gc *gc, uint32_t domid,
     libxl_ctx *ctx = libxl__gc_owner(gc);
     int ret, rc = ERROR_FAIL;
     const char *firmware = libxl__domain_firmware(gc, info);
+    libxl_domain_config *d_config = CONTAINER_OF(info, *d_config, b_info);
 
     if (!firmware)
         goto out;
@@ -552,7 +553,8 @@ int libxl__build_hvm(libxl__gc *gc, uint32_t domid,
         domid,
         (info->max_memkb - info->video_memkb) / 1024,
         (info->target_memkb - info->video_memkb) / 1024,
-        firmware);
+        firmware,
+        state->num_dms * 2 + 1);
     if (ret) {
         LIBXL__LOG_ERRNOVAL(ctx, LIBXL__LOG_ERROR, ret, "hvm building failed");
         goto out;

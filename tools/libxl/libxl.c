@@ -1330,7 +1330,8 @@ static void stubdom_destroy_callback(libxl__egc *egc,
     }
 
     dds->stubdom_finished = 1;
-    savefile = libxl__device_model_savefile(gc, dis->domid);
+    /* FIXME: get dmid */
+    savefile = libxl__device_model_savefile(gc, dis->domid, 0);
     rc = libxl__remove_file(gc, savefile);
     /*
      * On suspend libxl__domain_save_device_model will have already
@@ -1423,10 +1424,8 @@ void libxl__destroy_domid(libxl__egc *egc, libxl__destroy_domid_state *dis)
         LIBXL__LOG_ERRNOVAL(ctx, LIBXL__LOG_ERROR, rc, "xc_domain_pause failed for %d", domid);
     }
     if (dm_present) {
-        if (libxl__destroy_device_model(gc, domid) < 0)
-            LIBXL__LOG(ctx, LIBXL__LOG_ERROR, "libxl__destroy_device_model failed for %d", domid);
-
-        libxl__qmp_cleanup(gc, domid);
+        if (libxl__destroy_device_models(gc, domid) < 0)
+            LIBXL__LOG(ctx, LIBXL__LOG_ERROR, "libxl__destroy_device_models failed for %d", domid);
     }
     dis->drs.ao = ao;
     dis->drs.domid = domid;
@@ -1721,6 +1720,13 @@ static void device_addrm_aocomplete(libxl__egc *egc, libxl__ao_device *aodev)
 out:
     libxl__ao_complete(egc, ao, aodev->rc);
     return;
+}
+
+/******************************************************************************/
+
+int libxl__dm_setdefault(libxl__gc *gc, libxl_dm *dm)
+{
+    return 0;
 }
 
 /******************************************************************************/

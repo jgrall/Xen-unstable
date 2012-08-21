@@ -1034,8 +1034,8 @@ static void devices_remove_callback(libxl__egc *egc,
     return;
 }
 
-int libxl__wait_for_device_model(libxl__gc *gc,
-                                 uint32_t domid, char *state,
+int libxl__wait_for_device_model(libxl__gc *gc, libxl_domid domid,
+                                 libxl_dmid dmid, char *state,
                                  libxl__spawn_starting *spawning,
                                  int (*check_callback)(libxl__gc *gc,
                                                        uint32_t domid,
@@ -1044,7 +1044,8 @@ int libxl__wait_for_device_model(libxl__gc *gc,
                                  void *check_callback_userdata)
 {
     char *path;
-    path = libxl__sprintf(gc, "/local/domain/0/device-model/%d/state", domid);
+    path = libxl__sprintf(gc, "/local/domain/0/dms/%u/%u/state",
+                          domid, dmid);
     return libxl__wait_for_offspring(gc, domid,
                                      LIBXL_DEVICE_MODEL_START_TIMEOUT,
                                      "Device Model", path, state, spawning,
