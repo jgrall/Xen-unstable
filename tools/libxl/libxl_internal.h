@@ -93,7 +93,8 @@
 #define LIBXL_MIN_DOM0_MEM (128*1024)
 /* use 0 as the domid of the toolstack domain for now */
 #define LIBXL_TOOLSTACK_DOMID 0
-#define QEMU_SIGNATURE "DeviceModelRecord0002"
+#define DMS_SIGNATURE "DeviceModelRecords001"
+#define DM_SIGNATURE "DeviceModelRecord0002"
 #define STUBDOM_CONSOLE_LOGGING 0
 #define STUBDOM_CONSOLE_SAVE 1
 #define STUBDOM_CONSOLE_RESTORE 2
@@ -896,7 +897,8 @@ _hidden int libxl__domain_rename(libxl__gc *gc, uint32_t domid,
 
 _hidden int libxl__toolstack_restore(uint32_t domid, const uint8_t *buf,
                                      uint32_t size, void *data);
-_hidden int libxl__domain_resume_device_model(libxl__gc *gc, uint32_t domid);
+_hidden int libxl__domain_resume_device_models(libxl__gc *gc,
+                                               libxl_domid domid);
 
 _hidden void libxl__userdata_destroyall(libxl__gc *gc, uint32_t domid);
 
@@ -2230,10 +2232,12 @@ struct libxl__domain_suspend_state {
     int hvm;
     int xcflags;
     int guest_responded;
-    const char *dm_savefile;
     int interval; /* checkpoint interval (for Remus) */
     libxl__save_helper_state shs;
     libxl__logdirty_switch logdirty;
+    unsigned int num_dms;
+    unsigned int current_dm;
+    libxl_dmid *dms;
     /* private for libxl__domain_save_device_model */
     libxl__save_device_model_cb *save_dm_callback;
     libxl__datacopier_state save_dm_datacopier;
@@ -2535,9 +2539,9 @@ _hidden void libxl__xc_domain_restore_done(libxl__egc *egc, void *dcs_void,
                                            int rc, int retval, int errnoval);
 
 /* Each time the dm needs to be saved, we must call suspend and then save */
-_hidden int libxl__domain_suspend_device_model(libxl__gc *gc,
-                                           libxl__domain_suspend_state *dss);
-_hidden void libxl__domain_save_device_model(libxl__egc *egc,
+_hidden int libxl__domain_suspend_device_models(libxl__gc *gc,
+                                            libxl__domain_suspend_state *dss);
+_hidden void libxl__domain_save_device_models(libxl__egc *egc,
                                      libxl__domain_suspend_state *dss,
                                      libxl__save_device_model_cb *callback);
 

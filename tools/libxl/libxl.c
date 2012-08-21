@@ -416,7 +416,7 @@ int libxl_domain_resume(libxl_ctx *ctx, uint32_t domid, int suspend_cancel)
     }
 
     if (type == LIBXL_DOMAIN_TYPE_HVM) {
-        rc = libxl__domain_resume_device_model(gc, domid);
+        rc = libxl__domain_resume_device_models(gc, domid);
         if (rc) {
             LIBXL__LOG(ctx, LIBXL__LOG_ERROR,
                        "failed to resume device model for domain %u:%d",
@@ -852,8 +852,9 @@ int libxl_domain_unpause(libxl_ctx *ctx, uint32_t domid)
         path = libxl__sprintf(gc, "/local/domain/0/device-model/%d/state", domid);
         state = libxl__xs_read(gc, XBT_NULL, path);
         if (state != NULL && !strcmp(state, "paused")) {
+            /* FIXME: handle multiple qemu */
             libxl__qemu_traditional_cmd(gc, domid, "continue");
-            libxl__wait_for_device_model(gc, domid, "running",
+            libxl__wait_for_device_model(gc, domid, 0, "running",
                                          NULL, NULL, NULL);
         }
     }
