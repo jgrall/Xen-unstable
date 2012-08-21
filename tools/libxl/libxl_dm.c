@@ -1328,6 +1328,7 @@ static void device_model_spawn_outcome(libxl__egc *egc,
 {
     STATE_AO_GC(dmss->spawn.ao);
     int ret2;
+    char *filename;
 
     if (rc)
         LOG(ERROR, "%s: spawn failed (rc=%d)", dmss->spawn.what, rc);
@@ -1335,11 +1336,11 @@ static void device_model_spawn_outcome(libxl__egc *egc,
     libxl__domain_build_state *state = dmss->build_state;
 
     if (state->saved_state) {
-        ret2 = unlink(libxl__sprintf(gc, "%s.%u", state->saved_state,
-                                     dmss->dmid));
+        filename = GCSPRINTF("%s.%u", state->saved_state, dmss->dmid);
+        ret2 = unlink(filename);
         if (ret2) {
             LOGE(ERROR, "%s: failed to remove device-model state %s",
-                 dmss->spawn.what, state->saved_state);
+                 dmss->spawn.what, filename);
             rc = ERROR_FAIL;
             goto out;
         }
