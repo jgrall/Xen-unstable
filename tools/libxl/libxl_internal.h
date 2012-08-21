@@ -2232,10 +2232,12 @@ struct libxl__domain_suspend_state {
     int hvm;
     int xcflags;
     int guest_responded;
-    const char *dm_savefile;
     int interval; /* checkpoint interval (for Remus) */
     libxl__save_helper_state shs;
     libxl__logdirty_switch logdirty;
+    unsigned int num_dms;
+    unsigned int current_dm;
+    libxl_dmid *dms;
     /* private for libxl__domain_save_device_model */
     libxl__save_device_model_cb *save_dm_callback;
     libxl__datacopier_state save_dm_datacopier;

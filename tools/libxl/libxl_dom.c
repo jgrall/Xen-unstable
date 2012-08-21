@@ -844,14 +844,14 @@ static void switch_logdirty_done(libxl__egc *egc,
 
 /*----- callbacks, called by xc_domain_save -----*/
 
-#if 0
 static int libxl__domain_suspend_device_model(libxl__gc *gc,
+                                              libxl_dmid dmid,
                                               libxl__domain_suspend_state *dss)
 {
     libxl_ctx *ctx = libxl__gc_owner(gc);
     int ret = 0;
     uint32_t const domid = dss->domid;
-    const char *const filename = dss->dm_savefile;
+    const char *const filename = libxl__device_model_savefile(gc, domid, dmid);
 
     switch (libxl__device_model_version_running(gc, domid)) {
     case LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN_TRADITIONAL: {
@@ -862,10 +862,10 @@ static int libxl__domain_suspend_device_model(libxl__gc *gc,
         break;
     }
     case LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN:
-        if (libxl__qmp_stop(gc, domid))
+        if (libxl__qmp_stop(gc, domid, dmid))
             return ERROR_FAIL;
         /* Save DM state into filename */
-        ret = libxl__qmp_save(gc, domid, filename);
+        ret = libxl__qmp_save(gc, domid, dmid, filename);
         if (ret)
             unlink(filename);
         break;
@@ -875,23 +875,33 @@ static int libxl__domain_suspend_device_model(libxl__gc *gc,
 
     return ret;
 }
-#endif
 
 int libxl__domain_suspend_device_models(libxl__gc *gc,
                                         libxl__domain_suspend_state *dss)
 {
-    /* FIXME */
-    return -1;
-//    return libxl__browse_device_models(gc, domid,
-//                                       libxl__domain_suspend_device_model,
-//                                       1, NULL);
+    libxl_dmid *dms = NULL;
+    unsigned int num_dms = 0;
+    unsigned int i;
+    int ret;
+
+    dms = libxl__list_device_models(gc, dss->domid, &num_dms);
+
+    if (!dms)
+        return ERROR_FAIL;
+
+    for (i = 0; i < num_dms; i++)
+    {
+        ret = libxl__domain_suspend_device_model(gc, dms[i], dss);
+        if (ret)
+            return ret;
+    }
+
+    return 0;
 }
 
-#if 0
 static int libxl__domain_resume_device_model(libxl__gc *gc, libxl_domid domid,
-                                             libxl_dmid dmid, void *args)
+                                             libxl_dmid dmid)
 {
-    (void) args;
     switch (libxl__device_model_version_running(gc, domid)) {
     case LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN_TRADITIONAL: {
         libxl__qemu_traditional_cmd(gc, domid, "continue");
@@ -907,12 +917,28 @@ static int libxl__domain_resume_device_model(libxl__gc *gc, libxl_domid domid,
     }
     return 0;
 }
-#endif
 
 int libxl__domain_resume_device_models(libxl__gc *gc,
                                        libxl_domid domid)
 {
-    return -1;
+    libxl_dmid *dms = NULL;
+    unsigned int num_dms = 0;
+    unsigned int i = 0;
+    int ret = 0;
+
+    dms = libxl__list_device_models(gc, domid, &num_dms);
+
+    if (!dms)
+        return ERROR_FAIL;
+
+    for (i = 0; i < num_dms; i++)
+    {
+        ret = libxl__domain_resume_device_model(gc, domid, dms[i]);
+        if (ret)
+            return ret;
+    }
+
+    return 0;
 }
 
 int libxl__domain_suspend_common_callback(void *user)
@@ -1236,8 +1262,6 @@ void libxl__domain_suspend(libxl__egc *egc, libxl__domain_suspend_state *dss)
 
     dss->suspend_eventchn = -1;
     dss->guest_responded = 0;
-    /* FIXME: handle multiple daemon */
-    dss->dm_savefile = libxl__device_model_savefile(gc, domid, 0);
 
     if (r_info != NULL) {
         dss->interval = r_info->interval;
@@ -1317,33 +1341,34 @@ out:
     domain_suspend_done(egc, dss, rc);
 }
 
-#if 0
 static void save_device_model_datacopier_done(libxl__egc *egc,
      libxl__datacopier_state *dc, int onwrite, int errnoval);
 
 static void libxl__domain_save_device_model(libxl__egc *egc,
-                                            libxl__domain_suspend_state *dss,
-                                            libxl__save_device_model_cb *callback)
+                                            libxl__domain_suspend_state *dss)
 {
     STATE_AO_GC(dss->ao);
     struct stat st;
     uint32_t qemu_state_len;
     int rc;
+    libxl_dmid dmid = dss->dms[dss->current_dm];
 
-    dss->save_dm_callback = callback;
+//    dss->save_dm_callback = callback;
 
     /* Convenience aliases */
-    const char *const filename = dss->dm_savefile;
+    const char *const filename = libxl__device_model_savefile(gc, dss->domid,
+                                                              dmid);
     const int fd = dss->fd;
 
     libxl__datacopier_state *dc = &dss->save_dm_datacopier;
     memset(dc, 0, sizeof(*dc));
-    dc->readwhat = GCSPRINTF("qemu save file %s", filename);
+    dc->readwhat = GCSPRINTF("qemu %u save file %s", dmid, filename);
     dc->ao = ao;
     dc->readfd = -1;
     dc->writefd = fd;
     dc->maxsz = INT_MAX;
-    dc->copywhat = GCSPRINTF("qemu save file for domain %"PRIu32, dss->domid);
+    dc->copywhat = GCSPRINTF("qemu %u save file for domain %"PRIu32,
+                             dmid, dss->domid);
     dc->writewhat = "save/migration stream";
     dc->callback = save_device_model_datacopier_done;
 
@@ -1370,10 +1395,8 @@ static void libxl__domain_save_device_model(libxl__egc *egc,
     rc = libxl__datacopier_start(dc);
     if (rc) goto out;
 
-    // FIXME
-/*
     libxl__datacopier_prefixdata(egc, dc,
-                                 QEMU_SIGNATURE, strlen(QEMU_SIGNATURE));*/
+                                 DM_SIGNATURE, strlen(DM_SIGNATURE));
 
     libxl__datacopier_prefixdata(egc, dc,
                                  &qemu_state_len, sizeof(qemu_state_len));
@@ -1381,6 +1404,20 @@ static void libxl__domain_save_device_model(libxl__egc *egc,
 
  out:
     save_device_model_datacopier_done(egc, dc, -1, 0);
+}
+
+void libxl__domain_save_device_models(libxl__egc *egc,
+                                libxl__domain_suspend_state *dss,
+                                libxl__save_device_model_cb *callback)
+{
+    STATE_AO_GC(dss->ao);
+
+    dss->save_dm_callback = callback;
+    dss->num_dms = 0;
+    dss->current_dm = 0;
+    dss->dms = libxl__list_device_models(gc, dss->domid, &dss->num_dms);
+
+    libxl__domain_save_device_model(egc, dss);
 }
 
 static void save_device_model_datacopier_done(libxl__egc *egc,
@@ -1391,7 +1428,9 @@ static void save_device_model_datacopier_done(libxl__egc *egc,
     STATE_AO_GC(dss->ao);
 
     /* Convenience aliases */
-    const char *const filename = dss->dm_savefile;
+    libxl_dmid dmid = dss->dms[dss->current_dm];
+    const char *const filename = libxl__device_model_savefile(gc, dss->domid,
+                                                              dmid);
     int our_rc = 0;
     int rc;
 
@@ -1408,9 +1447,13 @@ static void save_device_model_datacopier_done(libxl__egc *egc,
     rc = libxl__remove_file(gc, filename);
     if (!our_rc) our_rc = rc;
 
-    dss->save_dm_callback(egc, dss, our_rc);
+    dss->current_dm++;
+
+    if (!our_rc && dss->num_dms != dss->current_dm)
+        libxl__domain_save_device_model(egc, dss);
+    else
+        dss->save_dm_callback(egc, dss, our_rc);
 }
-#endif
 
 static void domain_suspend_done(libxl__egc *egc,
                         libxl__domain_suspend_state *dss, int rc)
@@ -1430,42 +1473,6 @@ static void domain_suspend_done(libxl__egc *egc,
 }
 
 /*==================== Miscellaneous ====================*/
-
-void libxl__domain_save_device_models(libxl__egc *egc,
-                                libxl__domain_suspend_state *dss,
-                                libxl__save_device_model_cb *callback)
-{
-}
-#if 0
-int libxl__domain_save_device_models(libxl__gc *gc, libxl_domid domid, int fd)
-{
-    libxl_ctx *ctx = libxl__gc_owner(gc);
-    int ret = 0;
-    char *path;
-    char **dir = NULL;
-    uint32_t n;
-
-    ret = libxl_write_exactly(ctx, fd, DMS_SIGNATURE, strlen(DMS_SIGNATURE),
-                              "saved-state file", "dms signature");
-    if (ret)
-        return ret;
-
-    path = libxl__sprintf(gc, "/local/domain/0/dms/%u", domid);
-    dir = libxl__xs_directory(gc, XBT_NULL, path, &n);
-
-    if (!dir)
-        return ERROR_INVAL;
-
-    ret = libxl_write_exactly(ctx, fd, &n, sizeof(n), "saved-state file",
-                              "num dms");
-    if (ret)
-        return ret;
-
-    return libxl__browse_device_models(gc, domid,
-                                       libxl__domain_save_device_model,
-                                       1, &fd);
-}
-#endif
 
 char *libxl__uuid2string(libxl__gc *gc, const libxl_uuid uuid)
 {
