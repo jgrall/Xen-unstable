@@ -1653,7 +1653,8 @@ out:
 }
 
 int xc_hvm_register_pcidev(xc_interface *xch, domid_t dom, ioservid_t id,
-                           uint16_t bdf)
+                           uint8_t domain, uint8_t bus, uint8_t device,
+                           uint8_t function)
 {
     DECLARE_HYPERCALL;
     DECLARE_HYPERCALL_BUFFER(xen_hvm_register_pcidev_t, arg);
@@ -1672,7 +1673,10 @@ int xc_hvm_register_pcidev(xc_interface *xch, domid_t dom, ioservid_t id,
 
     arg->domid = dom;
     arg->id = id;
-    arg->bdf = bdf;
+    arg->domain = domain;
+    arg->bus = bus;
+    arg->device = device;
+    arg->function = function;
     rc = do_xen_hypercall(xch, &hypercall);
 
     xc_hypercall_buffer_free(xch, arg);

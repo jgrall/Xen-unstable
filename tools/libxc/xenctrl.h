@@ -1682,7 +1682,8 @@ int xc_hvm_unmap_io_range_from_ioreq_server(xc_interface *xch, domid_t dom,
  * Register a PCI device
  */
 int xc_hvm_register_pcidev(xc_interface *xch, domid_t dom, unsigned int id,
-                           uint16_t bdf);
+                           uint8_t domain, uint8_t bus, uint8_t device,
+                           uint8_t function);
 
 /* HVM guest pass-through */
 int xc_assign_device(xc_interface *xch,
