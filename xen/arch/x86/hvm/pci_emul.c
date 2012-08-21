@@ -6,6 +6,8 @@
 
 #define PCI_DEBUGSTR "%x:%x.%x"
 #define PCI_DEBUG(bdf) ((bdf) >> 8) & 0xff, ((bdf) >> 3) & 0x1f, ((bdf)) & 0x7
+#define PCI_MASK_BDF(bdf) (((bdf) & 0x00ffff00) >> 8)
+#define PCI_CMP_BDF(Pci, Bdf) ((pci)->bdf == PCI_MASK_BDF(Bdf))
 
 static int handle_config_space(int dir, uint32_t port, uint32_t bytes,
                                uint32_t *val)
@@ -58,12 +60,19 @@ end_handle:
     return rc;
 }
 
-int hvm_register_pcidev(domid_t domid, ioservid_t id, u16 bdf)
+int hvm_register_pcidev(domid_t domid, ioservid_t id,
+                        uint8_t domain, uint8_t bus,
+                        uint8_t device, uint8_t function)
 {
     struct domain *d;
     struct hvm_ioreq_server *s;
     int rc = 0;
     struct radix_tree_root *tree;
+    uint16_t bdf = 0;
+
+    /* For the moment we don't handle pci when domain != 0 */
+    if (domain != 0)
+        return -EINVAL;
 
     rc = rcu_lock_target_domain_by_id(domid, &d);
 
@@ -102,6 +111,10 @@ int hvm_register_pcidev(domid_t domid, ioservid_t id, u16 bdf)
                  PCI_DEBUG(bdf));
         goto create_end;
     }
+
+    bdf |= ((uint16_t)bus) << 8;
+    bdf |= ((uint16_t)device & 0x1f) << 3;
+    bdf |= ((uint16_t)function & 0x7);
 
     rc = radix_tree_insert(tree, bdf, s);
     if (rc)
