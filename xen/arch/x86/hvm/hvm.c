@@ -4095,8 +4095,6 @@ long do_hvm_op(unsigned long op, XEN_GUEST_HANDLE_PARAM(void) arg)
             {
             case HVM_PARAM_IO_PFN_FIRST:
                 rc = hvm_set_ioreq_page(d, &d->arch.hvm_domain.ioreq, a.value);
-                gdprintk(XENLOG_DEBUG, "Pfn first = 0x%lx\n", a.value);
-                gdprintk(XENLOG_DEBUG, "va = %p\n", d->arch.hvm_domain.ioreq.va);
                 break;
             case HVM_PARAM_IO_PFN_LAST:
                 if ( (d->arch.hvm_domain.params[HVM_PARAM_IO_PFN_LAST]) )

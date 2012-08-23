@@ -18,12 +18,15 @@ static int handle_config_space(int dir, uint32_t port, uint32_t bytes,
     int rc = X86EMUL_UNHANDLEABLE;
     struct vcpu *v = current;
 
-    if (port == 0xcf8 && bytes == 4)
+    if ( port == 0xcf8 && bytes == 4 )
     {
-        v->arch.hvm_vcpu.pci_cf8 = *val;
+        if ( dir == IOREQ_READ )
+            *val = v->arch.hvm_vcpu.pci_cf8;
+        else
+            v->arch.hvm_vcpu.pci_cf8 = *val;
         return X86EMUL_OKAY;
     }
-    else if (port < 0xcfc)
+    else if ( port < 0xcfc )
         return X86EMUL_UNHANDLEABLE;
 
     spin_lock(&v->domain->arch.hvm_domain.pci_root.pci_lock);
@@ -35,7 +38,7 @@ static int handle_config_space(int dir, uint32_t port, uint32_t bytes,
     s = radix_tree_lookup(&v->domain->arch.hvm_domain.pci_root.pci_list,
                           PCI_MASK_BDF(pci_cf8));
 
-    if (unlikely(s == NULL))
+    if ( unlikely(s == NULL) )
     {
         *val = ~0;
         rc = X86EMUL_OKAY;
@@ -71,15 +74,15 @@ int hvm_register_pcidev(domid_t domid, ioservid_t id,
     uint16_t bdf = 0;
 
     /* For the moment we don't handle pci when domain != 0 */
-    if (domain != 0)
+    if ( domain != 0 )
         return -EINVAL;
 
     rc = rcu_lock_target_domain_by_id(domid, &d);
 
-    if (rc != 0)
+    if ( rc != 0 )
         return rc;
 
-    if (!is_hvm_domain(d))
+    if ( !is_hvm_domain(d) )
     {
         rcu_unlock_domain(d);
         return -EINVAL;
@@ -88,12 +91,12 @@ int hvm_register_pcidev(domid_t domid, ioservid_t id,
     /* Search server */
     spin_lock(&d->arch.hvm_domain.ioreq_server_lock);
     s = d->arch.hvm_domain.ioreq_server_list;
-    while ((s != NULL) && (s->id != id))
+    while ( (s != NULL) && (s->id != id) )
         s = s->next;
 
     spin_unlock(&d->arch.hvm_domain.ioreq_server_lock);
 
-    if (s == NULL)
+    if ( s == NULL )
     {
         gdprintk(XENLOG_ERR, "Cannot find server %u\n", id);
         rc = -ENOENT;
@@ -104,7 +107,11 @@ int hvm_register_pcidev(domid_t domid, ioservid_t id,
 
     tree = &d->arch.hvm_domain.pci_root.pci_list;
 
-    if (radix_tree_lookup(tree, bdf))
+    bdf |= ((uint16_t)bus) << 8;
+    bdf |= ((uint16_t)device & 0x1f) << 3;
+    bdf |= ((uint16_t)function & 0x7);
+
+    if ( radix_tree_lookup(tree, bdf) )
     {
         rc = -EEXIST;
         gdprintk(XENLOG_ERR, "Bdf " PCI_DEBUGSTR " is already allocated\n",
@@ -112,12 +119,8 @@ int hvm_register_pcidev(domid_t domid, ioservid_t id,
         goto create_end;
     }
 
-    bdf |= ((uint16_t)bus) << 8;
-    bdf |= ((uint16_t)device & 0x1f) << 3;
-    bdf |= ((uint16_t)function & 0x7);
-
     rc = radix_tree_insert(tree, bdf, s);
-    if (rc)
+    if ( rc )
     {
         gdprintk(XENLOG_ERR, "Cannot insert the bdf\n");
         goto create_end;
