@@ -79,10 +79,10 @@ static int hvm_buffered_io_send_to_server(ioreq_t *p, struct hvm_ioreq_server *s
         gdprintk(XENLOG_WARNING, "unexpected ioreq size: %u\n", p->size);
         return 0;
     }
-
+    
     bp.data = p->data;
     bp.addr = p->addr;
-
+    
     spin_lock(&iorp->lock);
 
     if ( (pg->write_pointer - pg->read_pointer) >=
@@ -92,10 +92,10 @@ static int hvm_buffered_io_send_to_server(ioreq_t *p, struct hvm_ioreq_server *s
         spin_unlock(&iorp->lock);
         return 0;
     }
-
+    
     memcpy(&pg->buf_ioreq[pg->write_pointer % IOREQ_BUFFER_SLOT_NUM],
            &bp, sizeof(bp));
-
+    
     if ( qw )
     {
         bp.data = p->data >> 32;
@@ -110,7 +110,7 @@ static int hvm_buffered_io_send_to_server(ioreq_t *p, struct hvm_ioreq_server *s
     notify_via_xen_event_channel(v->domain,
                                  s->buf_ioreq_evtchn);
     spin_unlock(&iorp->lock);
-
+    
     return 1;
 }
 
@@ -210,7 +210,7 @@ void send_invalidate_req(void)
     p->addr = 0;
 
     spin_lock(&v->domain->arch.hvm_domain.ioreq_server_lock);
-    for (s = v->domain->arch.hvm_domain.ioreq_server_list; s; s = s->next)
+    for ( s = v->domain->arch.hvm_domain.ioreq_server_list; s; s = s->next )
     {
         set_ioreq(v, &s->ioreq, p);
         (void)hvm_send_assist_req(v);

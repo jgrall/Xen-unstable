@@ -572,7 +572,7 @@ out:
     return rc;
 }
 
-int libxl__qemu_traditional_cmd(libxl__gc *gc, libxl_domid domid,
+int libxl__qemu_traditional_cmd(libxl__gc *gc, uint32_t domid,
                                 const char *cmd)
 {
     char *path = NULL;
