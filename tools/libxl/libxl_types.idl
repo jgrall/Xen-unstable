@@ -267,7 +267,7 @@ libxl_dm_cap = Enumeration("dm_cap", [
 libxl_dm = Struct("dm", [
     ("name",         string),
     ("path",         string),
-    ("capabilities",   uint64),
+    ("capabilities",   libxl_dm_cap),
     ("vifs",         libxl_string_list),
     ])
 
