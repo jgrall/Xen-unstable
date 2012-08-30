@@ -8,7 +8,7 @@
 void hvm_init_pci_emul(struct domain *d);
 void hvm_destroy_pci_emul(struct domain *d);
 int hvm_register_pcidev(domid_t domid, ioservid_t id,
-                        uint8_t domain, uint8_t bus,
+                        uint16_t domain, uint8_t bus,
                         uint8_t device, uint8_t function);
 
 struct pci_root_emul {
