@@ -1653,7 +1653,7 @@ out:
 }
 
 int xc_hvm_register_pcidev(xc_interface *xch, domid_t dom, ioservid_t id,
-                           uint8_t domain, uint8_t bus, uint8_t device,
+                           uint16_t domain, uint8_t bus, uint8_t device,
                            uint8_t function)
 {
     DECLARE_HYPERCALL;

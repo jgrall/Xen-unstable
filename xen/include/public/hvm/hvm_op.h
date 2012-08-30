@@ -283,7 +283,8 @@ struct xen_hvm_register_pcidev {
     domid_t domid;	   /* IN - domain to be serviced */
     ioservid_t id;	   /* IN - handle from HVMOP_register_ioreq_server */
     /* IN - PCI identification in PCI topology (domain:bus:device:function) */
-    uint8_t domain, bus, device, function;
+    uint16_t domain;
+    uint8_t bus, device, function;
 };
 typedef struct xen_hvm_register_pcidev xen_hvm_register_pcidev_t;
 DEFINE_XEN_GUEST_HANDLE(xen_hvm_register_pcidev_t);
