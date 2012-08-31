@@ -57,6 +57,7 @@ int xlu_dm_parse(XLU_Config *cfg, const char *spec,
     char *buf = strdup(spec);
     char *p, *p2;
     int rc = 0;
+    libxl_dm_cap cap;
 
     p = strtok(buf, ",");
     if (!p)
@@ -65,14 +66,15 @@ int xlu_dm_parse(XLU_Config *cfg, const char *spec,
         while (*p == ' ')
             p++;
         if ((p2 = strchr(p, '=')) == NULL) {
-            if (!strcmp(p, "ui"))
-                dm->capabilities |= LIBXL_DM_CAP_UI;
-            else if (!strcmp(p, "ide"))
-                dm->capabilities |= LIBXL_DM_CAP_IDE;
-            else if (!strcmp(p, "serial"))
-                dm->capabilities |= LIBXL_DM_CAP_SERIAL;
-            else if (!strcmp(p, "audio"))
-                dm->capabilities |= LIBXL_DM_CAP_AUDIO;
+            if (libxl_dm_cap_from_string(p, &cap))
+            {
+                fprintf(stderr,
+                        "xl: Unknow capability '%s' for a device model\n",
+                        p);
+                exit(-ERROR_FAIL);
+
+            }
+            dm->capabilities |= cap;
         } else {
             *p2 = '\0';
             if (!strcmp(p, "name"))
@@ -84,11 +86,6 @@ int xlu_dm_parse(XLU_Config *cfg, const char *spec,
        }
     } while ((p = strtok(NULL, ",")) != NULL);
 
-    if (!dm->name && dm->path)
-    {
-        fprintf(stderr, "xl: Unable to parse device_deamon\n");
-        exit(-ERROR_FAIL);
-    }
 skip_dm:
     free(buf);
 
