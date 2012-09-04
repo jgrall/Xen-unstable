@@ -62,8 +62,8 @@ struct hvm_domain {
     /* Use for the IO handles by Xen */
     struct hvm_ioreq_page  ioreq;
     struct hvm_ioreq_server *ioreq_server_list;
-    uint32_t		     nr_ioreq_server;
-    spinlock_t               ioreq_server_lock;
+    uint32_t                nr_ioreq_server;
+    spinlock_t              ioreq_server_lock;
 
     struct pl_time         pl_time;
 

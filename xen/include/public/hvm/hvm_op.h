@@ -251,8 +251,8 @@ DEFINE_XEN_GUEST_HANDLE(xen_hvm_register_ioreq_server_t);
 
 #define HVMOP_get_ioreq_server_buf_channel 21
 struct xen_hvm_get_ioreq_server_buf_channel {
-    domid_t domid;	        /* IN - domain to be serviced */
-    ioservid_t id;	        /* IN - handle from HVMOP_register_ioreq_server */
+    domid_t domid;          /* IN - domain to be serviced */
+    ioservid_t id;          /* IN - handle from HVMOP_register_ioreq_server */
     evtchn_port_t channel;  /* OUT - buf ioreq channel */
 };
 typedef struct xen_hvm_get_ioreq_server_buf_channel xen_hvm_get_ioreq_server_buf_channel_t;
