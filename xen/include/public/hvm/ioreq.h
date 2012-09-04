@@ -34,9 +34,9 @@
 
 #define IOREQ_TYPE_PIO          0 /* pio */
 #define IOREQ_TYPE_COPY         1 /* mmio ops */
-#define IOREQ_TYPE_PCI_CONFIG   2 /* pci config space ops */
 #define IOREQ_TYPE_TIMEOFFSET   7
 #define IOREQ_TYPE_INVALIDATE   8 /* mapcache */
+#define IOREQ_TYPE_PCI_CONFIG   9 /* pci config space ops */
 
 /*
  * VMExit dispatcher should cooperate with instruction decoder to
