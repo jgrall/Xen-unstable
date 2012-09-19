@@ -211,8 +211,8 @@
  * HVM TAIL:
  *
  *  "Magic" pages:
- *     uint64_t         : I/O req PFN
- *     uint64_t         : Buffered I/O req PFN
+ *     uint64_t         : I/O req pfn first
+ *     uint64_t         : I/O req pfn last
  *     uint64_t         : Store PFN
  *  Xen HVM Context:
  *     uint32_t         : Length of context in bytes
@@ -223,6 +223,10 @@
  *       "DeviceModelRecord0002" : uint32_t length field followed by that many
  *                                 bytes of Qemu save data
  *       "RemusDeviceModelState" : Currently the same as "DeviceModelRecord0002".
+ *       "DeviceModelRecords001" : uint32_t number of Qemu state saved
+ *                                 followed by multiple "Qemu context".
+ *                                 Only nested signature "DeviceModelRecord00002"
+ *                                 are valid for the moment.
  *
  * PV TAIL:
  *
