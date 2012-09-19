@@ -258,7 +258,10 @@ libxl_domain_sched_params = Struct("domain_sched_params",[
     ])
 
 libxl_dm_cap = Enumeration("dm_cap", [
-    (1, "UI"), # Emulate all UI + default device
+    # Emulate in the same QEMU due to dependencies:
+    #   - UI: VGA, Mouse, Keyboard
+    #   - default devices: i440fx, piix3, piix4, dma, xen apic, xen platform
+    (1, "UI"),
     (2, "IDE"), # Emulate IDE
     (4, "SERIAL"), # Emulate Serial
     (8, "AUDIO"), # Emulate audio
