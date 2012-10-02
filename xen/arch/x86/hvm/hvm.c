@@ -66,6 +66,7 @@
 #include <asm/mem_event.h>
 #include <asm/mem_access.h>
 #include <public/mem_event.h>
+#include <xen/hvm/xen_platform.h>
 
 bool_t __read_mostly hvm_enabled;
 
@@ -607,6 +608,7 @@ int hvm_domain_initialise(struct domain *d)
     register_portio_handler(d, 0xe9, 1, hvm_print_line);
 
     hvm_init_pci_emul(d);
+    xen_platform_init(d);
 
     rc = hvm_funcs.domain_initialise(d);
     if ( rc != 0 )
