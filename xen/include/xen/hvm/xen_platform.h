@@ -23,8 +23,8 @@
  * THE SOFTWARE.
  */
 
-#ifndef __ASM_X86_HVM_XEN_PLATFORM_H__
-#define __ASM_X86_HVM_XEN_PLATFORM_H__
+#ifndef __XEN_HVM_XEN_PLATFORM_H__
+#define __XEN_HVM_XEN_PLATFORM_H__
 
 # include <xen/types.h>
 
@@ -37,4 +37,4 @@
 
 void xen_platform_init(struct domain *d);
 
-#endif /* __ASM_X86_HVM_XEN_PLATFORM_H__ */
+#endif /* __XEN_HVM_XEN_PLATFORM_H__ */
