@@ -27,6 +27,7 @@
 #include <public/domctl.h>
 #include <public/hvm/save.h>
 #include <asm/mm.h>
+#include <public/hvm/ioreq.h>
 
 /* Interrupt acknowledgement sources. */
 enum hvm_intsrc {
@@ -210,6 +211,9 @@ int prepare_ring_for_helper(struct domain *d, unsigned long gmfn,
                             struct page_info **_page, void **_va);
 void destroy_ring_for_helper(void **_va, struct page_info *page);
 
+/* Send an ioreq to each ioreq server */
+void hvm_send_assist_req_multiple(struct vcpu *v, struct ioreq *p);
+/* Send an ioreq to a specific ioreq server set previously */
 bool_t hvm_send_assist_req(struct vcpu *v);
 
 void hvm_get_guest_pat(struct vcpu *v, u64 *guest_pat);

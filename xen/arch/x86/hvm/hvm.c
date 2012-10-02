@@ -363,7 +363,7 @@ void hvm_do_resume(struct vcpu *v)
 
     p = get_ioreq(v);
 
-    if ( p->type == IOREQ_TYPE_INVALIDATE )
+    if ( v->arch.hvm_vcpu.ioreq_multiple )
     {
         spin_lock(&v->domain->arch.hvm_domain.ioreq_server_lock);
         /* Wait all servers */
@@ -376,6 +376,7 @@ void hvm_do_resume(struct vcpu *v)
             hvm_wait_on_io(v, &page->vcpu_ioreq[v->vcpu_id]);
         }
         spin_unlock(&v->domain->arch.hvm_domain.ioreq_server_lock);
+        v->arch.hvm_vcpu.ioreq_multiple = 0;
     }
     else
         hvm_wait_on_io(v, p);
@@ -1185,6 +1186,8 @@ int hvm_vcpu_initialise(struct vcpu *v)
         goto fail3;
 
     v->arch.hvm_vcpu.ioreq = &v->domain->arch.hvm_domain.ioreq;
+    /* By default we send an ioreq to only one ioreq server */
+    v->arch.hvm_vcpu.ioreq_multiple = 0;
 
     spin_lock_init(&v->arch.hvm_vcpu.tm_lock);
     INIT_LIST_HEAD(&v->arch.hvm_vcpu.tm_list);
@@ -1274,6 +1277,23 @@ void hvm_vcpu_down(struct vcpu *v)
     }
 }
 
+/* Send an ioreq to each ioreq server */
+void hvm_send_assist_req_multiple(struct vcpu *v, ioreq_t *p)
+{
+    struct hvm_ioreq_server *s;
+
+    spin_lock(&v->domain->arch.hvm_domain.ioreq_server_lock);
+    for ( s = v->domain->arch.hvm_domain.ioreq_server_list; s; s = s->next )
+    {
+        set_ioreq(v, &s->ioreq, p);
+        hvm_send_assist_req(v);
+    }
+    spin_unlock(&v->domain->arch.hvm_domain.ioreq_server_lock);
+
+    v->arch.hvm_vcpu.ioreq_multiple = 1;
+}
+
+/* Send an ioreq to a specific ioreq server */
 bool_t hvm_send_assist_req(struct vcpu *v)
 {
     ioreq_t *p;

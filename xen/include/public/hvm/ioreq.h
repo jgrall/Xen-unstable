@@ -37,6 +37,11 @@
 #define IOREQ_TYPE_TIMEOFFSET   7
 #define IOREQ_TYPE_INVALIDATE   8 /* mapcache */
 #define IOREQ_TYPE_PCI_CONFIG   9 /* pci config space ops */
+#define IOREQ_TYPE_EVENT        10 /* unplug event */
+
+#define IOREQ_EVENT_UNPLUG_ALL_IDE_DISKS 1
+#define IOREQ_EVENT_UNPLUG_ALL_NICS 2
+#define IOREQ_EVENT_UNPLUG_AUX_IDE_DISKS 4
 
 /*
  * VMExit dispatcher should cooperate with instruction decoder to

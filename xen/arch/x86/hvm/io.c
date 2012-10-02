@@ -192,12 +192,11 @@ void send_invalidate_req(void)
 {
     struct vcpu *v = current;
     ioreq_t p[1];
-    struct hvm_ioreq_server *s;
 
-    if ( p->state != STATE_IOREQ_NONE )
+    if ( get_ioreq(v)->state != STATE_IOREQ_NONE )
     {
         gdprintk(XENLOG_ERR, "WARNING: send invalidate req with something "
-                 "already pending (%d)?\n", p->state);
+                 "already pending (%d)?\n", get_ioreq(v)->state);
         domain_crash(v->domain);
         return;
     }
@@ -209,15 +208,7 @@ void send_invalidate_req(void)
     p->count = 0;
     p->addr = 0;
 
-    spin_lock(&v->domain->arch.hvm_domain.ioreq_server_lock);
-    for ( s = v->domain->arch.hvm_domain.ioreq_server_list; s; s = s->next )
-    {
-        set_ioreq(v, &s->ioreq, p);
-        (void)hvm_send_assist_req(v);
-    }
-    spin_unlock(&v->domain->arch.hvm_domain.ioreq_server_lock);
-
-    set_ioreq(v, &v->domain->arch.hvm_domain.ioreq, p);
+    hvm_send_assist_req_multiple(v, p);
 }
 
 int handle_mmio(void)
