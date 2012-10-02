@@ -126,8 +126,10 @@ struct hvm_vcpu {
     struct list_head    tm_list;
 
     struct hvm_ioreq_page	*ioreq;
+    /* Did we forward ioreq to multiple ioreq server */
+    int                 ioreq_multiple;
     /* PCI Information */
-    uint32_t		pci_cf8;
+    uint32_t		    pci_cf8;
 
     bool_t              flag_dr_dirty;
     bool_t              debug_state_latch;
