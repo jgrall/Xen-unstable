@@ -568,7 +568,7 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
     case LIBXL_DOMAIN_TYPE_HVM:
         flexarray_append(dm_args,
                          libxl__sprintf(gc,
-                                        "xenfv,xen_dmid=%u,xen_default_dev=%s,xen_emulate_ide=%s",
+                                        "xenfv,xen_dmid=%u,xen_default_dev=%s,emulate_ide=%s",
                                         dmid, (cap_ui) ? "on" : "off",
                                         (cap_ide) ? "on" : "off"));
         for (i = 0; b_info->extra_hvm && b_info->extra_hvm[i] != NULL; i++)
