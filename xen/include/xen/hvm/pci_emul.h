@@ -17,8 +17,8 @@
  * Place - Suite 330, Boston, MA 02111-1307 USA.
  */
 
-#ifndef PCI_EMUL_H_
-# define PCI_EMUL_H_
+#ifndef __XEN_HVM_PCI_EMUL_H__
+# define __XEN_HVM_PCI_EMUL_H__
 
 # include <xen/radix-tree.h>
 # include <xen/spinlock.h>
@@ -35,7 +35,7 @@ struct pci_root_emul {
     struct radix_tree_root pci_list;
 };
 
-#endif /* !PCI_EMUL_H_ */
+#endif /* !__XEN_HVM_PCI_EMUL_H__ */
 
 /*
  * Local variables:
