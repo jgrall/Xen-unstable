@@ -57,7 +57,8 @@ static int hvmemul_prepare_assist(ioreq_t *p)
     int sign;
     uint32_t data = ~0;
 
-    if ( p->type == IOREQ_TYPE_PCI_CONFIG )
+    /* Only search in range list for pio and mmio request */
+    if ( p->type != IOREQ_TYPE_COPY && p->type != IOREQ_TYPE_PIO )
         return X86EMUL_UNHANDLEABLE;
 
     spin_lock(&v->domain->arch.hvm_domain.ioreq_server_lock);
@@ -77,7 +78,7 @@ static int hvmemul_prepare_assist(ioreq_t *p)
 
     sign = p->df ? -1 : 1;
 
-    if ( p->dir != IOREQ_WRITE )
+    if ( p->dir == IOREQ_READ )
     {
         if ( !p->data_is_ptr )
             p->data = ~0;
@@ -263,7 +264,9 @@ static int hvmemul_do_io(
         break;
     case X86EMUL_UNHANDLEABLE:
         rc = X86EMUL_RETRY;
-        if ( !hvm_send_assist_req(curr) )
+        /* In case of event, we send the ioreq to all servers */
+        if ( !hvm_send_assist_req(curr,
+                                  get_ioreq(curr)->type == IOREQ_TYPE_EVENT) )
             vio->io_state = HVMIO_none;
         else if ( p_data == NULL )
             rc = X86EMUL_OKAY;

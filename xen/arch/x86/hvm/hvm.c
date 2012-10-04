@@ -1280,31 +1280,8 @@ void hvm_vcpu_down(struct vcpu *v)
     }
 }
 
-/* Send an ioreq to each ioreq server */
-void hvm_send_assist_req_multiple(struct vcpu *v, ioreq_t *p)
+static bool_t hvm_send_req_to_server(struct vcpu *v, ioreq_t *p)
 {
-    struct hvm_ioreq_server *s;
-
-    spin_lock(&v->domain->arch.hvm_domain.ioreq_server_lock);
-    for ( s = v->domain->arch.hvm_domain.ioreq_server_list; s; s = s->next )
-    {
-        set_ioreq(v, &s->ioreq, p);
-        hvm_send_assist_req(v);
-    }
-    spin_unlock(&v->domain->arch.hvm_domain.ioreq_server_lock);
-
-    v->arch.hvm_vcpu.ioreq_multiple = 1;
-}
-
-/* Send an ioreq to a specific ioreq server */
-bool_t hvm_send_assist_req(struct vcpu *v)
-{
-    ioreq_t *p;
-
-    if ( unlikely(!vcpu_start_shutdown_deferral(v)) )
-        return 0; /* implicitly bins the i/o operation */
-
-    p = get_ioreq(v);
     if ( unlikely(p->state != STATE_IOREQ_NONE) )
     {
         /* This indicates a bug in the device model. Crash the domain. */
@@ -1324,6 +1301,40 @@ bool_t hvm_send_assist_req(struct vcpu *v)
     notify_via_xen_event_channel(v->domain, p->vp_eport);
 
     return 1;
+
+}
+
+bool_t hvm_send_assist_req(struct vcpu *v, bool_t all)
+{
+    ioreq_t *p;
+    bool_t ret = 0;
+    struct hvm_ioreq_server *s;
+
+    if ( unlikely(!vcpu_start_shutdown_deferral(v)) )
+        return 0; /* implicitly bins the i/o operation */
+
+    p = get_ioreq(v);
+
+    v->arch.hvm_vcpu.ioreq_multiple = all;
+
+    if ( all )
+    {
+        gdprintk(XENLOG_DEBUG, "all\n");
+        spin_lock(&v->domain->arch.hvm_domain.ioreq_server_lock);
+        for ( s = v->domain->arch.hvm_domain.ioreq_server_list; s; s = s->next )
+        {
+            /* Prepare the ioreq */
+            set_ioreq(v, &s->ioreq, p);
+            ret = hvm_send_req_to_server(v, get_ioreq(v));
+            if (!ret)
+                break;
+        }
+        spin_unlock(&v->domain->arch.hvm_domain.ioreq_server_lock);
+    }
+    else
+        ret = hvm_send_req_to_server(v, p);
+
+    return ret;
 }
 
 void hvm_hlt(unsigned long rflags)

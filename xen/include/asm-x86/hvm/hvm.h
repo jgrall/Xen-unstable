@@ -211,10 +211,8 @@ int prepare_ring_for_helper(struct domain *d, unsigned long gmfn,
                             struct page_info **_page, void **_va);
 void destroy_ring_for_helper(void **_va, struct page_info *page);
 
-/* Send an ioreq to each ioreq server */
-void hvm_send_assist_req_multiple(struct vcpu *v, struct ioreq *p);
-/* Send an ioreq to a specific ioreq server set previously */
-bool_t hvm_send_assist_req(struct vcpu *v);
+/* Send ioreq to only one or all ioreq servers */
+bool_t hvm_send_assist_req(struct vcpu *v, bool_t all);
 
 void hvm_get_guest_pat(struct vcpu *v, u64 *guest_pat);
 int hvm_set_guest_pat(struct vcpu *v, u64 guest_pat);

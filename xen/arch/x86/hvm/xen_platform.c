@@ -34,7 +34,7 @@ static int handle_platform_io(int dir, uint32_t port, uint32_t bytes,
                               uint32_t *val)
 {
     struct vcpu *v = current;
-    ioreq_t p[1];
+    ioreq_t *p = get_ioreq(v);
 
     /* Dispatch to another handler if it's not the right size and ioport */
     if ( port != XEN_PLATFORM_IOPORT && bytes != 2 && dir != IOREQ_WRITE )
@@ -42,7 +42,7 @@ static int handle_platform_io(int dir, uint32_t port, uint32_t bytes,
 
     p->type = IOREQ_TYPE_EVENT;
     p->size = 2;
-    p->data = 0;
+    p->data = 0x0;
     p->data_is_ptr = 0;
     if ( *val & XEN_PLATFORM_UNPLUG_ALL_IDE_DISKS )
         p->data |= IOREQ_EVENT_UNPLUG_ALL_IDE_DISKS;
@@ -53,11 +53,8 @@ static int handle_platform_io(int dir, uint32_t port, uint32_t bytes,
     p->count = 0;
     p->addr = 0;
 
-    hvm_send_assist_req_multiple(v, p);
-
-    return X86EMUL_OKAY;
+    return X86EMUL_UNHANDLEABLE;
 }
-
 
 void xen_platform_init(struct domain *d)
 {
