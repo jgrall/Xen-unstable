@@ -1319,7 +1319,6 @@ bool_t hvm_send_assist_req(struct vcpu *v, bool_t all)
 
     if ( all )
     {
-        gdprintk(XENLOG_DEBUG, "all\n");
         spin_lock(&v->domain->arch.hvm_domain.ioreq_server_lock);
         for ( s = v->domain->arch.hvm_domain.ioreq_server_list; s; s = s->next )
         {
