@@ -191,12 +191,16 @@ void send_timeoffset_req(unsigned long timeoff)
 void send_invalidate_req(void)
 {
     struct vcpu *v = current;
-    ioreq_t p[1];
+    ioreq_t *p;
 
-    if ( get_ioreq(v)->state != STATE_IOREQ_NONE )
+    /* Use the default shared page */
+    v->arch.hvm_vcpu.ioreq = &v->domain->arch.hvm_domain.ioreq;
+    p = get_ioreq(v);
+
+    if ( p->state != STATE_IOREQ_NONE )
     {
         gdprintk(XENLOG_ERR, "WARNING: send invalidate req with something "
-                 "already pending (%d)?\n", get_ioreq(v)->state);
+                 "already pending (%d)?\n", p->state);
         domain_crash(v->domain);
         return;
     }
@@ -208,7 +212,8 @@ void send_invalidate_req(void)
     p->count = 0;
     p->addr = 0;
 
-    hvm_send_assist_req_multiple(v, p);
+    /* Send this ioreq to all servers */
+    hvm_send_assist_req(v, 1);
 }
 
 int handle_mmio(void)
