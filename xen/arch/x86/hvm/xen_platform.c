@@ -37,7 +37,7 @@ static int handle_platform_io(int dir, uint32_t port, uint32_t bytes,
     ioreq_t *p = get_ioreq(v);
 
     /* Dispatch to another handler if it's not the right size and ioport */
-    if ( port != XEN_PLATFORM_IOPORT && bytes != 2 && dir != IOREQ_WRITE )
+    if ( !(port == XEN_PLATFORM_IOPORT && bytes == 2 && dir == IOREQ_WRITE) )
         return X86EMUL_UNHANDLEABLE;
 
     p->type = IOREQ_TYPE_EVENT;
