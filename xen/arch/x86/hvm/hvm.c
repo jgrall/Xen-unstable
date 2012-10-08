@@ -374,7 +374,11 @@ void hvm_do_resume(struct vcpu *v)
             ASSERT((v == current) || spin_is_locked(&s->ioreq.lock));
             ASSERT(s->ioreq.va != NULL);
             v->arch.hvm_vcpu.ioreq = &s->ioreq;
+            /* FIXME: not sure it's a good solution to unlock but the
+             * below function could reschedule the vcpu */
+            spin_unlock(&v->domain->arch.hvm_domain.ioreq_server_lock);
             hvm_wait_on_io(v, &page->vcpu_ioreq[v->vcpu_id]);
+            spin_lock(&v->domain->arch.hvm_domain.ioreq_server_lock);
         }
         spin_unlock(&v->domain->arch.hvm_domain.ioreq_server_lock);
         v->arch.hvm_vcpu.ioreq_multiple = 0;
