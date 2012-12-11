@@ -573,7 +573,7 @@ static void parse_config_data(const char *config_source,
     const char *buf;
     long l;
     XLU_Config *config;
-    XLU_ConfigList *cpus, *vbds, *nics, *pcis, *cvfbs, *cpuids, *vtpms;
+    XLU_ConfigList *cpus, *vbds, *nics, *pcis, *cvfbs, *cpuids, *vtpms, *dms;
     XLU_ConfigList *ioports, *irqs, *iomem;
     int num_ioports, num_irqs, num_iomem;
     int pci_power_mgmt = 0;
