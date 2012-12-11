@@ -1421,10 +1421,14 @@ _hidden int libxl__qmp_stop(libxl__gc *gc, libxl_domid domid, libxl_dmid dmid);
 _hidden int libxl__qmp_resume(libxl__gc *gc, libxl_domid domid,
                               libxl_dmid dmid);
 /* Save current QEMU state into fd. */
-_hidden int libxl__qmp_save(libxl__gc *gc, int domid, const char *filename);
+_hidden int libxl__qmp_save(libxl__gc *gc, libxl_domid domid,
+                            libxl_dmid, const char *filename);
 /* Set dirty bitmap logging status */
-_hidden int libxl__qmp_set_global_dirty_log(libxl__gc *gc, int domid, bool enable);
-_hidden int libxl__qmp_insert_cdrom(libxl__gc *gc, int domid, const libxl_device_disk *disk);
+_hidden int libxl__qmp_set_global_dirty_log(libxl__gc *gc, libxl_domid domid,
+                                            libxl_dmid dmid, bool enable);
+_hidden int libxl__qmp_insert_cdrom(libxl__gc *gc, libxl_domid domid,
+                                    libxl_dmid dmid,
+                                    const libxl_device_disk *disk);
 /* close and free the QMP handler */
 _hidden void libxl__qmp_close(libxl__qmp_handler *qmp);
 /* remove the socket file, if the file has already been removed,

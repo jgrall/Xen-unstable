@@ -764,15 +764,15 @@ static void domain_suspend_switch_qemu_xen_traditional_logdirty
 }
 
 static void domain_suspend_switch_qemu_xen_logdirty
-                               (int domid, unsigned enable,
-                                libxl__save_helper_state *shs)
+                               (libxl_domid domid, libxl_dmid dmid,
+                                unsigned enable, libxl__save_helper_state *shs)
 {
     libxl__egc *egc = shs->egc;
     libxl__domain_suspend_state *dss = CONTAINER_OF(shs, *dss, shs);
     STATE_AO_GC(dss->ao);
     int rc;
 
-    rc = libxl__qmp_set_global_dirty_log(gc, domid, enable);
+    rc = libxl__qmp_set_global_dirty_log(gc, domid, dmid, enable);
     if (!rc) {
         libxl__xc_domain_saverestore_async_callback_done(egc, shs, 0);
     } else {
@@ -794,7 +794,8 @@ void libxl__domain_suspend_common_switch_qemu_logdirty
         domain_suspend_switch_qemu_xen_traditional_logdirty(domid, enable, shs);
         break;
     case LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN:
-        domain_suspend_switch_qemu_xen_logdirty(domid, enable, shs);
+        /* FIXME: browse all qemu */
+        domain_suspend_switch_qemu_xen_logdirty(domid, 0, enable, shs);
         break;
     default:
         LOG(ERROR,"logdirty switch failed"

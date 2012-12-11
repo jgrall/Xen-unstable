@@ -796,14 +796,14 @@ out:
     return rc;
 }
 
-static int qmp_run_command(libxl__gc *gc, int domid,
+static int qmp_run_command(libxl__gc *gc, libxl_domid domid, libxl_dmid dmid,
                            const char *cmd, libxl__json_object *args,
                            qmp_callback_t callback, void *opaque)
 {
     libxl__qmp_handler *qmp = NULL;
     int rc = 0;
 
-    qmp = libxl__qmp_initialize(gc, domid);
+    qmp = libxl__qmp_initialize(gc, domid, dmid);
     if (!qmp)
         return ERROR_FAIL;
 
@@ -857,7 +857,7 @@ static int qmp_device_del(libxl__gc *gc, libxl_domid domid,
     libxl__json_object *args = NULL;
 
     qmp_parameters_add_string(gc, &args, "id", id);
-    return qmp_run_command(gc, domid, "device_del", args, NULL, NULL);
+    return qmp_run_command(gc, domid, dmid, "device_del", args, NULL, NULL);
 }
 
 int libxl__qmp_pci_del(libxl__gc *gc, libxl_domid domid,
@@ -877,7 +877,7 @@ int libxl__qmp_save(libxl__gc *gc, libxl_domid domid,
     libxl__json_object *args = NULL;
 
     qmp_parameters_add_string(gc, &args, "filename", (char *)filename);
-    return qmp_run_command(gc, domid, "xen-save-devices-state", args,
+    return qmp_run_command(gc, domid, dmid, "xen-save-devices-state", args,
                            NULL, NULL);
 }
 
@@ -901,25 +901,26 @@ static int qmp_change(libxl__gc *gc, libxl__qmp_handler *qmp,
 
 int libxl__qmp_stop(libxl__gc *gc, libxl_domid domid, libxl_dmid dmid)
 {
-    return qmp_run_command(gc, domid, "stop", NULL, NULL, NULL);
+    return qmp_run_command(gc, domid, dmid, "stop", NULL, NULL, NULL);
 }
 
-int libxl__qmp_resume(libxl__gc *gc, int domid)
+int libxl__qmp_resume(libxl__gc *gc, libxl_domid domid, libxl_dmid dmid)
 {
-    return qmp_run_command(gc, domid, "cont", NULL, NULL, NULL);
+    return qmp_run_command(gc, domid, dmid, "cont", NULL, NULL, NULL);
 }
 
-int libxl__qmp_set_global_dirty_log(libxl__gc *gc, int domid, bool enable)
+int libxl__qmp_set_global_dirty_log(libxl__gc *gc, libxl_domid domid,
+                                    libxl_dmid dmid, bool enable)
 {
     libxl__json_object *args = NULL;
 
     qmp_parameters_add_bool(gc, &args, "enable", enable);
 
-    return qmp_run_command(gc, domid, "xen-set-global-dirty-log", args,
+    return qmp_run_command(gc, domid, dmid, "xen-set-global-dirty-log", args,
                            NULL, NULL);
 }
 
-int libxl__qmp_insert_cdrom(libxl__gc *gc, int domid,
+int libxl__qmp_insert_cdrom(libxl__gc *gc, libxl_domid domid, libxl_dmid dmid,
                             const libxl_device_disk *disk)
 {
     libxl__json_object *args = NULL;
@@ -928,10 +929,10 @@ int libxl__qmp_insert_cdrom(libxl__gc *gc, int domid,
     QMP_PARAMETERS_SPRINTF(&args, "device", "ide-%i", dev_number);
 
     if (disk->format == LIBXL_DISK_FORMAT_EMPTY) {
-        return qmp_run_command(gc, domid, "eject", args, NULL, NULL);
+        return qmp_run_command(gc, domid, dmid, "eject", args, NULL, NULL);
     } else {
         qmp_parameters_add_string(gc, &args, "target", disk->pdev_path);
-        return qmp_run_command(gc, domid, "change", args, NULL, NULL);
+        return qmp_run_command(gc, domid, dmid, "change", args, NULL, NULL);
     }
 }
 

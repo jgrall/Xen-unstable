@@ -2443,7 +2443,8 @@ int libxl_cdrom_insert(libxl_ctx *ctx, uint32_t domid, libxl_device_disk *disk,
     if (rc) goto out;
 
     if (dm_ver == LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN) {
-        rc = libxl__qmp_insert_cdrom(gc, domid, disk);
+        /* FIXME: dmid */
+        rc = libxl__qmp_insert_cdrom(gc, domid, 0, disk);
         if (rc) goto out;
     }
 
