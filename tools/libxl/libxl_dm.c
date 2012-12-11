@@ -584,7 +584,7 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
     flexarray_append(dm_args, "-m");
     flexarray_append(dm_args, libxl__sprintf(gc, "%"PRId64, ram_size));
 
-    if (b_info->type == LIBXL_DOMAIN_TYPE_HVM) {
+    if (b_info->type == LIBXL_DOMAIN_TYPE_HVM && cap_ide) {
         for (i = 0; i < num_disks; i++) {
             int disk, part;
             int dev_number =
