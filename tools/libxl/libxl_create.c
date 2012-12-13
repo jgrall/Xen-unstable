@@ -77,9 +77,7 @@ static int libxl__domain_config_setdefault(libxl__gc *gc,
         return ERROR_INVAL;
 
     if (!d_config->num_dms) {
-        d_config->dms = malloc(sizeof (*d_config->dms));
-        if (!d_config->dms)
-            return ERROR_NOMEM;
+        d_config->dms = libxl__zalloc(NOGC, sizeof (*d_config->dms));
         libxl_dm_init(d_config->dms);
         d_config->num_dms = 1;
     }
