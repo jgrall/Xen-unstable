@@ -862,6 +862,15 @@ void libxl_device_vtpm_list_free(libxl_device_vtpm* list, int nr)
    free(list);
 }
 
+void libxl_dm_list_free(libxl_dm *list, int nr)
+{
+    int i;
+
+    for (i = 0; i < nr; i++)
+        lixbl_dm_dispose(&list[i]);
+    free(list);
+}
+
 int libxl_domid_valid_guest(uint32_t domid)
 {
     /* returns 1 if the value _could_ be a valid guest domid, 0 otherwise

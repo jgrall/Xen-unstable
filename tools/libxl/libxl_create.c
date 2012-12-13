@@ -35,10 +35,6 @@ void libxl_domain_config_dispose(libxl_domain_config *d_config)
 {
     int i;
 
-    for (i=0; i<d_config->num_dms; i++)
-        libxl_dm_dispose(&d_config->dms[i]);
-    free(d_config->dms);
-
     for (i=0; i<d_config->num_disks; i++)
         libxl_device_disk_dispose(&d_config->disks[i]);
     free(d_config->disks);
@@ -60,6 +56,8 @@ void libxl_domain_config_dispose(libxl_domain_config *d_config)
     free(d_config->vkbs);
 
     libxl_device_vtpm_list_free(d_config->vtpms, d_config->num_vtpms);
+
+    libxl_dm_list_free(d_config->dms, d_config->num_dms);
 
     libxl_domain_create_info_dispose(&d_config->c_info);
     libxl_domain_build_info_dispose(&d_config->b_info);
