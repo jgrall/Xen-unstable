@@ -630,6 +630,8 @@ void libxl_vcpuinfo_list_free(libxl_vcpuinfo *, int nr_vcpus);
 void libxl_device_vtpm_list_free(libxl_device_vtpm*, int nr_vtpms);
 void libxl_vtpminfo_list_free(libxl_vtpminfo *, int nr_vtpms);
 
+void libxl_dm_list_free(libxl_dm *list, int nr_dms);
+
 /*
  * Devices
  * =======
