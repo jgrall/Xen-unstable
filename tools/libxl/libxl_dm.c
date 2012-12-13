@@ -614,43 +614,10 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
                     continue;
                 }
 
-                if (disks[i].is_cdrom) {
-                    if (disks[i].format == LIBXL_DISK_FORMAT_EMPTY)
-                        drive = libxl__sprintf
-                            (gc, "if=ide,index=%d,media=cdrom", disk);
-                    else
-                        drive = libxl__sprintf
-                            (gc, "file=%s,if=ide,index=%d,media=cdrom,format=%s",
-                             disks[i].pdev_path, disk, format);
-                } else {
-                    if (disks[i].format == LIBXL_DISK_FORMAT_EMPTY) {
-                        LIBXL__LOG(ctx, LIBXL__LOG_WARNING, "cannot support"
-                                   " empty disk format for %s", disks[i].vdev);
-                        continue;
-                    }
-
-                    if (format == NULL) {
-                        LIBXL__LOG(ctx, LIBXL__LOG_WARNING, "unable to determine"
-                                   " disk image format %s", disks[i].vdev);
-                        continue;
-                    }
-
-                    /*
-                     * Explicit sd disks are passed through as is.
-                     *
-                     * For other disks we translate devices 0..3 into
-                     * hd[a-d] and ignore the rest.
-                     */
-                    if (strncmp(disks[i].vdev, "sd", 2) == 0)
-                        drive = libxl__sprintf
-                            (gc, "file=%s,if=scsi,bus=0,unit=%d,format=%s",
-                             disks[i].pdev_path, disk, format);
-                    else if (disk < 4)
-                        drive = libxl__sprintf
-                            (gc, "file=%s,if=ide,index=%d,media=disk,format=%s",
-                             disks[i].pdev_path, disk, format);
-                    else
-                        continue; /* Do not emulate this disk */
+                if (format == NULL) {
+                    LIBXL__LOG(ctx, LIBXL__LOG_WARNING, "unable to determine"
+                               " disk image format %s", disks[i].vdev);
+                    continue;
                 }
 
                 /*
@@ -670,6 +637,9 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
                 else
                     continue; /* Do not emulate this disk */
             }
+
+            flexarray_append(dm_args, "-drive");
+            flexarray_append(dm_args, drive);
         }
     }
     flexarray_append(dm_args, NULL);
