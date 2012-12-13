@@ -867,7 +867,7 @@ void libxl_dm_list_free(libxl_dm *list, int nr)
     int i;
 
     for (i = 0; i < nr; i++)
-        lixbl_dm_dispose(&list[i]);
+        libxl_dm_dispose(&list[i]);
     free(list);
 }
 
