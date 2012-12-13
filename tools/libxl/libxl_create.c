@@ -1068,6 +1068,8 @@ static void domcreate_launch_dm(libxl__egc *egc, libxl__multidev *multidev,
             return;
         } else {
             assert(!dcs->dmss);
+            domcreate_devmodel_started(egc, &dcs->dmss[dcs->current_dmid].dm,
+                                       0);
             return;
         }
     }
