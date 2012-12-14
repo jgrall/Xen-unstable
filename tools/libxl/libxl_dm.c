@@ -514,7 +514,7 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
         }
         for (i = 0; i < num_nics; i++) {
             if (nics[i].nictype == LIBXL_NIC_TYPE_VIF_IOEMU
-                && libxl__dm_has_vif(nics[i].id, dmid, guest_config)) {
+                && libxl__dm_has_vif(nics[i].ifname, dmid, guest_config)) {
                 char *smac = libxl__sprintf(gc,
                                 LIBXL_MAC_FMT, LIBXL_MAC_BYTES(nics[i].mac));
                 const char *ifname = libxl__device_nic_devname(gc,

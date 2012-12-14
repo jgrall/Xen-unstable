@@ -1189,9 +1189,6 @@ static void parse_config_data(const char *config_source,
                 } else if (!strcmp(p, "vifname")) {
                     free(nic->ifname);
                     nic->ifname = strdup(p2 + 1);
-                } else if (!strcmp(p, "id")) {
-                    free(nic->id);
-                    nic->id = strdup(p2 + 1);
                 } else if (!strcmp(p, "backend")) {
                     if(libxl_name_to_domid(ctx, (p2 + 1), &(nic->backend_domid))) {
                         fprintf(stderr, "Specified backend domain does not exist, defaulting to Dom0\n");
