@@ -268,10 +268,10 @@ libxl_dm_cap = Enumeration("dm_cap", [
     ])
 
 libxl_dm = Struct("dm", [
-    ("name",         string),
-    ("path",         string),
-    ("capabilities",   libxl_dm_cap),
-    ("vifs",         libxl_string_list),
+    ("name",            string),
+    ("path",            string),
+    ("capabilities",    libxl_dm_cap),
+    ("vifs",            libxl_string_list),
     ])
 
 libxl_domain_build_info = Struct("domain_build_info",[
@@ -399,7 +399,6 @@ libxl_device_nic = Struct("device_nic", [
     ("nictype", libxl_nic_type),
     ("rate_bytes_per_interval", uint64),
     ("rate_interval_usecs", uint32),
-    ("id", string),
     ])
 
 libxl_device_pci = Struct("device_pci", [
