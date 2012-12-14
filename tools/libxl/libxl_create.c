@@ -1148,8 +1148,16 @@ static void domcreate_devmodel_started(libxl__egc *egc,
         }
     }
 
+    dcs->current_dmid++;
+
+    /* Spawn the next device model if it's not the last one */
+    if (dcs->current_dmid < dcs->guest_config->num_dms) {
+        domcreate_spawn_devmodel(egc, dcs, dcs->current_dmid);
+        return;
+    }
+
     /* Plug nic interfaces */
-    if (d_config->num_nics > 0 && dmss->dmid == 0) {
+    if (d_config->num_nics > 0) {
         /* Attach nics */
         libxl__multidev_begin(ao, &dcs->multidev);
         dcs->multidev.callback = domcreate_attach_vtpms;
@@ -1216,34 +1224,23 @@ static void domcreate_attach_pci(libxl__egc *egc, libxl__multidev *multidev,
         goto error_out;
     }
 
-    /* TO FIX: for the moment only add to device model 0 */
+    for (i = 0; i < d_config->num_pcidevs; i++)
+        libxl__device_pci_add(gc, domid, &d_config->pcidevs[i], 1);
 
-    if (dcs->current_dmid == 0) {
-        for (i = 0; i < d_config->num_pcidevs; i++)
-            libxl__device_pci_add(gc, domid,
-                                  &d_config->pcidevs[i], 1);
-
-        if (d_config->num_pcidevs > 0) {
-            ret = libxl__create_pci_backend(gc, domid, d_config->pcidevs,
-                d_config->num_pcidevs);
-            if (ret < 0) {
-                LIBXL__LOG(ctx, LIBXL__LOG_ERROR,
-                    "libxl_create_pci_backend failed: %d", ret);
-                goto error_out;
-            }
+    if (d_config->num_pcidevs > 0) {
+        ret = libxl__create_pci_backend(gc, domid, d_config->pcidevs,
+            d_config->num_pcidevs);
+        if (ret < 0) {
+            LIBXL__LOG(ctx, LIBXL__LOG_ERROR,
+                       "libxl_create_pci_backend failed: %d", ret);
+            goto error_out;
         }
     }
 
-    dcs->current_dmid++;
+    libxl__arch_domain_create(gc, d_config, domid);
+    domcreate_console_available(egc, dcs);
 
-    if (dcs->current_dmid >= dcs->guest_config->num_dms) {
-        libxl__arch_domain_create(gc, d_config, domid);
-        domcreate_console_available(egc, dcs);
-        domcreate_complete(egc, dcs, 0);
-    } else {
-        domcreate_spawn_devmodel(egc, dcs, dcs->current_dmid);
-    }
-
+    domcreate_complete(egc, dcs, 0);
     return;
 
 error_out:
