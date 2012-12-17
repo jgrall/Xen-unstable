@@ -33,6 +33,7 @@ static int libxl__domain_config_setdefault(libxl__gc *gc,
     int ret = 0;
     libxl_dm *default_dm = NULL;
 
+    /* Don't support old QEMU with disaggregation */
     if (b_info->device_model_version == LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN_TRADITIONAL
         && (d_config->num_dms > 1))
         return ERROR_INVAL;
