@@ -892,6 +892,19 @@ yajl_gen_status libxl_domain_config_gen_json(yajl_gen hand,
     if (s != yajl_gen_status_ok)
         goto out;
 
+    s = yajl_gen_string(hand, (const unsigned char *)"dms",
+                        sizeof("dms")-1);
+    if (s != yajl_gen_status_ok)
+        goto out;
+    s = yajl_gen_array_open(hand);
+    if (s != yajl_gen_status_ok)
+        goto out;
+    for (i = 0; i < p->num_dms; i++) {
+        s = libxl_dm_gen_json(hand, &p->dms[i]);
+        if (s != yajl_gen_status_ok)
+            goto out;
+    }
+
     s = yajl_gen_string(hand, (const unsigned char *)"on_poweroff",
                         sizeof("on_poweroff")-1);
     if (s != yajl_gen_status_ok)
