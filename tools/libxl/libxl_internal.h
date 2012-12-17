@@ -2491,7 +2491,7 @@ struct libxl__dm_spawn_state {
     libxl_domain_config *guest_config;
     libxl__domain_build_state *build_state; /* relates to guest_domid */
     libxl__dm_spawn_cb *callback;
-    libxl_dmid dmid;
+    const libxl_dm *dm;
     struct libxl__domain_create_state *dcs;
 };
 
@@ -2534,7 +2534,7 @@ struct libxl__domain_create_state {
     int guest_domid;
     libxl__domain_build_state build_state;
     libxl__bootloader_state bl;
-    libxl_dmid current_dmid;
+    uint32_t current_dm_index; /* Number of device models spawned */
     libxl__stub_dm_spawn_state* dmss;
         /* If we're not doing stubdom, we use only dmss.dm,
          * for the non-stubdom device model. */
