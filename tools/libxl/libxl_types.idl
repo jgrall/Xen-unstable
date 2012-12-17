@@ -8,6 +8,7 @@ namespace("libxl_")
 libxl_defbool = Builtin("defbool", passby=PASS_BY_REFERENCE)
 
 libxl_domid = Builtin("domid", json_fn = "yajl_gen_integer", autogenerate_json = False)
+libxl_dmid = Builtin("dmid", json_fn = "yajl_gen_integer", autogenerate_json = False, init_val="-1")
 libxl_devid = Builtin("devid", json_fn = "yajl_gen_integer", autogenerate_json = False, signed = True, init_val="-1")
 libxl_uuid = Builtin("uuid", passby=PASS_BY_REFERENCE)
 libxl_mac = Builtin("mac", passby=PASS_BY_REFERENCE)
@@ -269,6 +270,7 @@ libxl_dm_cap = Enumeration("dm_cap", [
 
 libxl_dm = Struct("dm", [
     ("name",            string),
+    ("dmid",            libxl_dmid),
     ("path",            string),
     ("capabilities",    libxl_dm_cap),
     ("vifs",            libxl_string_list),
