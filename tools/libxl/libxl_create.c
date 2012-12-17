@@ -40,6 +40,7 @@ static int libxl__domain_config_setdefault(libxl__gc *gc,
     if (!d_config->num_dms) {
         d_config->dms = libxl__zalloc(NOGC, sizeof (*d_config->dms));
         libxl_dm_init(d_config->dms);
+        d_config->dms[0].dmid = 0;
         d_config->num_dms = 1;
     }
 
@@ -677,13 +678,14 @@ static void initiate_domain_create(libxl__egc *egc,
         if (ret) goto error_out;
     }
 
-    dcs->current_dmid = 0;
+    dcs->current_dm_index = 0;
     dcs->build_state.num_dms = d_config->num_dms;
     GCNEW_ARRAY(dcs->dmss, d_config->num_dms);
 
     for (i = 0; i < d_config->num_dms; i++) {
         dcs->dmss[i].dm.guest_domid = 0; /* Means we haven't spawned */
         dcs->dmss[i].dm.dcs = dcs;
+        dcs->dmss[i].dm.dm = &d_config->dms[i];
     }
 
     dcs->bl.ao = ao;
@@ -731,9 +733,9 @@ static void domcreate_console_available(libxl__egc *egc,
 
 static void domcreate_spawn_devmodel(libxl__egc *egc,
                                     libxl__domain_create_state *dcs,
-                                    libxl_dmid dmid)
+                                    uint32_t dm_index)
 {
-    libxl__stub_dm_spawn_state *dmss = &dcs->dmss[dmid];
+    libxl__stub_dm_spawn_state *dmss = &dcs->dmss[dm_index];
     STATE_AO_GC(dcs->ao);
 
     /* We might be going to call libxl__spawn_local_dm, or _spawn_stub_dm.
@@ -744,7 +746,6 @@ static void domcreate_spawn_devmodel(libxl__egc *egc,
     dmss->dm.build_state = &dcs->build_state;
     dmss->dm.callback = domcreate_devmodel_started;
     dmss->callback = domcreate_devmodel_started;
-    dmss->dm.dmid = dmid;
 
     libxl__spawn_dm(egc, dmss);
 }
@@ -1038,7 +1039,7 @@ static void domcreate_launch_dm(libxl__egc *egc, libxl__multidev *multidev,
         libxl__device_vkb_add(gc, domid, &vkb);
         libxl_device_vkb_dispose(&vkb);
 
-        domcreate_spawn_devmodel(egc, dcs, dcs->current_dmid);
+        domcreate_spawn_devmodel(egc, dcs, dcs->current_dm_index);
         return;
     }
     case LIBXL_DOMAIN_TYPE_PV:
@@ -1064,11 +1065,12 @@ static void domcreate_launch_dm(libxl__egc *egc, libxl__multidev *multidev,
 
         if (need_qemu) {
             assert(dcs->dmss);
-            domcreate_spawn_devmodel(egc, dcs, dcs->current_dmid);
+            domcreate_spawn_devmodel(egc, dcs, dcs->current_dm_index);
             return;
         } else {
             assert(!dcs->dmss);
-            domcreate_devmodel_started(egc, &dcs->dmss[dcs->current_dmid].dm,
+            domcreate_devmodel_started(egc,
+                                       &dcs->dmss[dcs->current_dm_index].dm,
                                        0);
             return;
         }
@@ -1105,15 +1107,15 @@ static void domcreate_devmodel_started(libxl__egc *egc,
     if (dmss->guest_domid) {
         if (d_config->b_info.device_model_version
             == LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN) {
-            libxl__qmp_initializations(gc, domid, dmss->dmid, d_config);
+            libxl__qmp_initializations(gc, domid, dmss->dm->dmid, d_config);
         }
     }
 
-    dcs->current_dmid++;
+    dcs->current_dm_index++;
 
     /* Spawn the next device model if it's not the last one */
-    if (dcs->current_dmid < dcs->guest_config->num_dms) {
-        domcreate_spawn_devmodel(egc, dcs, dcs->current_dmid);
+    if (dcs->current_dm_index < dcs->guest_config->num_dms) {
+        domcreate_spawn_devmodel(egc, dcs, dcs->current_dm_index);
         return;
     }
 

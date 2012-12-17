@@ -933,7 +933,7 @@ static void spawn_stub_launch_dm(libxl__egc *egc,
     libxl__stub_dm_spawn_state *sdss = CONTAINER_OF(multidev, *sdss, multidev);
     STATE_AO_GC(sdss->dm.spawn.ao);
     libxl_ctx *ctx = libxl__gc_owner(gc);
-    libxl_dmid dmid = sdss->dm.dmid;
+    libxl_dmid dmid = sdss->dm.dm->dmid;
     int i, num_console = STUBDOM_SPECIAL_CONSOLES;
     libxl__device_console *console;
 
@@ -1111,7 +1111,7 @@ static void libxl__spawn_local_dm(libxl__egc *egc, libxl__dm_spawn_state *dmss)
 {
     /* convenience aliases */
     const int domid = dmss->guest_domid;
-    const libxl_dmid dmid = dmss->dmid;
+    const libxl_dmid dmid = dmss->dm->dmid;
     libxl__domain_build_state *const state = dmss->build_state;
     libxl__spawn_state *const spawn = &dmss->spawn;
 
@@ -1306,7 +1306,7 @@ static void device_model_spawn_outcome(libxl__egc *egc,
     libxl__domain_build_state *state = dmss->build_state;
 
     if (state->saved_state) {
-        filename = GCSPRINTF("%s.%u", state->saved_state, dmss->dmid);
+        filename = GCSPRINTF("%s.%u", state->saved_state, dmss->dm->dmid);
         ret2 = unlink(filename);
         if (ret2) {
             LOGE(ERROR, "%s: failed to remove device-model state %s",
