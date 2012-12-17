@@ -349,16 +349,8 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
                                         const char *dm, libxl_dmid guest_domid,
                                         libxl_dmid dmid,
                                         const libxl_domain_config *guest_config,
-                                        const libxl__domain_build_state *state)
+                                        libxl__domain_build_state *state)
 {
-    /**
-     * PCI device number. Before 3, we have IDE, ISA, SouthBridge and
-     * XEN PCI. Theses devices will be emulate in each QEMU, but only
-     * one QEMU (the one which emulates default device) will register
-     * these devices through Xen PCI hypercall.
-     */
-    static unsigned int bdf = 3;
-
     libxl_ctx *ctx = libxl__gc_owner(gc);
     const libxl_domain_create_info *c_info = &guest_config->c_info;
     const libxl_domain_build_info *b_info = &guest_config->b_info;
@@ -461,11 +453,13 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
             switch (b_info->u.hvm.vga.kind) {
             case LIBXL_VGA_INTERFACE_TYPE_STD:
                 flexarray_vappend(dm_args, "-device",
-                                  GCSPRINTF("VGA,addr=%u", bdf++), NULL);
+                                  GCSPRINTF("VGA,addr=%u", state->bdf++),
+                                  NULL);
                 break;
             case LIBXL_VGA_INTERFACE_TYPE_CIRRUS:
                 flexarray_vappend(dm_args, "-device",
-                                  GCSPRINTF("cirrus-vga,addr=%u", bdf++),
+                                  GCSPRINTF("cirrus-vga,addr=%u",
+                                            state->bdf++),
                                   NULL);
                 break;
             }
@@ -524,7 +518,7 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
                 flexarray_append(dm_args,
                             GCSPRINTF("%s,id=nic%d,netdev=net%d,mac=%s,addr=%u",
                                       nics[i].model, nics[i].devid,
-                                      nics[i].devid, smac, bdf++));
+                                      nics[i].devid, smac, state->bdf++));
                 flexarray_append(dm_args, "-netdev");
                 flexarray_append(dm_args, GCSPRINTF(
                                           "type=tap,id=net%d,ifname=%s,"
@@ -651,7 +645,7 @@ static char ** libxl__build_device_model_args(libxl__gc *gc,
                                         libxl_domid guest_domid,
                                         libxl_dmid dmid,
                                         const libxl_domain_config *guest_config,
-                                        const libxl__domain_build_state *state)
+                                        libxl__domain_build_state *state)
 {
     libxl_ctx *ctx = libxl__gc_owner(gc);
 
