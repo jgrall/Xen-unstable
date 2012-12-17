@@ -683,6 +683,9 @@ static void initiate_domain_create(libxl__egc *egc,
     dcs->build_state.num_dms = d_config->num_dms;
     GCNEW_ARRAY(dcs->dmss, d_config->num_dms);
 
+    /* See comment in libxl__domain_build_state to understand the value */
+    dcs->build_state.bdf = 3;
+
     for (i = 0; i < d_config->num_dms; i++) {
         dcs->dmss[i].dm.guest_domid = 0; /* Means we haven't spawned */
         dcs->dmss[i].dm.dcs = dcs;

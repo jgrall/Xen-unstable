@@ -879,6 +879,14 @@ typedef struct {
     libxl__file_reference pv_kernel;
     libxl__file_reference pv_ramdisk;
     const char * pv_cmdline;
+
+    /* PCI device number. Before 3, we have SouthBridge, ISA, XEN PCI.
+     * Theses devices will be emulate in each QEMU, but only one QEMU
+     * (the one which emulates default device) will register these
+     * devices through Xen PCI hypercall.
+     */
+    unsigned int bdf;
+
 } libxl__domain_build_state;
 
 _hidden int libxl__build_pre(libxl__gc *gc, uint32_t domid,
