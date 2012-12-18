@@ -34,8 +34,22 @@ const char *libxl__device_model_savefile(libxl__gc *gc, libxl_domid domid,
     return libxl__sprintf(gc, "/var/lib/xen/qemu-save.%u.%u", domid, dmid);
 }
 
+static const libxl_dm *libxl__dmid_to_dm(libxl_dmid dmid,
+                                         const libxl_domain_config *d_config)
+{
+    int i;
+
+    for (i = 0; i < d_config->num_dms; i++)
+    {
+        if (d_config->dms[i].dmid == dmid)
+            return &d_config->dms[i];
+    }
+
+    return NULL;
+}
+
 const char *libxl__domain_device_model(libxl__gc *gc,
-                                       libxl_dmid dmid,
+                                       const libxl_dm *dm_config,
                                        const libxl_domain_build_info *b_info)
 {
     libxl_ctx *ctx = libxl__gc_owner(gc);
@@ -46,8 +60,8 @@ const char *libxl__domain_device_model(libxl__gc *gc,
     if (libxl_defbool_val(guest_config->b_info.device_model_stubdomain))
         return NULL;
 
-    if (dmid < guest_config->num_dms && guest_config->dms[dmid].path) {
-        dm = libxl__strdup(gc, guest_config->dms[dmid].path);
+    if (dm_config && dm_config->path) {
+        dm = libxl__strdup(gc, dm_config->path);
     } else if (guest_config->b_info.device_model) {
         dm = libxl__strdup(gc, guest_config->b_info.device_model);
     } else {
@@ -73,6 +87,12 @@ const libxl_vnc_info *libxl__dm_vnc(libxl_dmid dmid,
                                     const libxl_domain_config *guest_config)
 {
     const libxl_vnc_info *vnc = NULL;
+    const libxl_dm *dm = libxl__dmid_to_dm(dmid, guest_config);
+
+    /* VNC is only enable on the UI device model */
+    if (!dm || !(dm->capabilities & LIBXL_DM_CAP_UI))
+        return NULL;
+
     if (guest_config->b_info.type == LIBXL_DOMAIN_TYPE_HVM) {
         vnc = &guest_config->b_info.u.hvm.vnc;
     } else if (guest_config->num_vfbs > 0) {
@@ -103,14 +123,15 @@ static const char *dm_keymap(const libxl_domain_config *guest_config)
 }
 
 static char ** libxl__build_device_model_args_old(libxl__gc *gc,
-                                        const char *dm, int domid,
+                                        const char *dm, libxl_domid domid,
+                                        libxl_dmid dmid,
                                         const libxl_domain_config *guest_config,
                                         const libxl__domain_build_state *state)
 {
     const libxl_domain_create_info *c_info = &guest_config->c_info;
     const libxl_domain_build_info *b_info = &guest_config->b_info;
     const libxl_device_nic *nics = guest_config->nics;
-    const libxl_vnc_info *vnc = libxl__dm_vnc(0, guest_config);
+    const libxl_vnc_info *vnc = libxl__dm_vnc(dmid, guest_config);
     const libxl_sdl_info *sdl = dm_sdl(guest_config);
     const int num_nics = guest_config->num_nics;
     const char *keymap = dm_keymap(guest_config);
@@ -354,7 +375,7 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
     libxl_ctx *ctx = libxl__gc_owner(gc);
     const libxl_domain_create_info *c_info = &guest_config->c_info;
     const libxl_domain_build_info *b_info = &guest_config->b_info;
-    const libxl_dm *dm_config = &guest_config->dms[dmid];
+    const libxl_dm *dm_config = libxl__dmid_to_dm(dmid, guest_config);
     const libxl_device_disk *disks = guest_config->disks;
     const libxl_device_nic *nics = guest_config->nics;
     const int num_disks = guest_config->num_disks;
@@ -652,7 +673,8 @@ static char ** libxl__build_device_model_args(libxl__gc *gc,
     switch (guest_config->b_info.device_model_version) {
     case LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN_TRADITIONAL:
         return libxl__build_device_model_args_old(gc, dm,
-                                                  guest_domid, guest_config,
+                                                  guest_domid, dmid,
+                                                  guest_config,
                                                   state);
     case LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN:
         return libxl__build_device_model_args_new(gc, dm,
@@ -1131,7 +1153,7 @@ static void libxl__spawn_local_dm(libxl__egc *egc, libxl__dm_spawn_state *dmss)
         abort();
     }
 
-    dm = libxl__domain_device_model(gc, dmid, b_info);
+    dm = libxl__domain_device_model(gc, dmss->dm, b_info);
     if (!dm) {
         rc = ERROR_FAIL;
         goto out;
