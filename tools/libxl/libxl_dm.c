@@ -35,7 +35,7 @@ const char *libxl__device_model_savefile(libxl__gc *gc, libxl_domid domid,
 }
 
 const char *libxl__domain_device_model(libxl__gc *gc,
-                                       uint32_t dmid,
+                                       libxl_dmid dmid,
                                        const libxl_domain_build_info *b_info)
 {
     libxl_ctx *ctx = libxl__gc_owner(gc);
