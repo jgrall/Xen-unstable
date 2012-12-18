@@ -310,6 +310,9 @@ typedef uint32_t libxl_domid;
 typedef int libxl_devid;
 typedef uint32_t libxl_dmid;
 
+/* Invalid dmid. It's used by qemu and libxl as default value */
+#define LIBXL_DMID_INVALID ~0
+
 /*
  * Formatting Enumerations.
  *
