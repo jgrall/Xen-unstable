@@ -679,18 +679,13 @@ static void initiate_domain_create(libxl__egc *egc,
         if (ret) goto error_out;
     }
 
-    dcs->current_dm_index = 0;
-    dcs->build_state.num_dms = d_config->num_dms;
-    GCNEW_ARRAY(dcs->dmss, d_config->num_dms);
-
     /* See comment in libxl__domain_build_state to understand the value */
     dcs->build_state.bdf = 3;
 
-    for (i = 0; i < d_config->num_dms; i++) {
-        dcs->dmss[i].dm.guest_domid = 0; /* Means we haven't spawned */
-        dcs->dmss[i].dm.dcs = dcs;
-        dcs->dmss[i].dm.dm = &d_config->dms[i];
-    }
+    dcs->dm_index = 0;
+    dcs->build_state.num_dms = d_config->num_dms;
+
+    dcs->dmss.dm.guest_domid = 0; /* Means we haven't spawned */
 
     dcs->bl.ao = ao;
     libxl_device_disk *bootdisk =
@@ -737,9 +732,9 @@ static void domcreate_console_available(libxl__egc *egc,
 
 static void domcreate_spawn_devmodel(libxl__egc *egc,
                                     libxl__domain_create_state *dcs,
-                                    uint32_t dm_index)
+                                    const libxl_dm *dm)
 {
-    libxl__stub_dm_spawn_state *dmss = &dcs->dmss[dm_index];
+    libxl__stub_dm_spawn_state *dmss = &dcs->dmss;
     STATE_AO_GC(dcs->ao);
 
     /* We might be going to call libxl__spawn_local_dm, or _spawn_stub_dm.
@@ -750,6 +745,8 @@ static void domcreate_spawn_devmodel(libxl__egc *egc,
     dmss->dm.build_state = &dcs->build_state;
     dmss->dm.callback = domcreate_devmodel_started;
     dmss->callback = domcreate_devmodel_started;
+    dmss->dm.guest_domid = 0; /* Reset the domid => we haven't spawned */
+    dmss->dm.dm = dm;
 
     libxl__spawn_dm(egc, dmss);
 }
@@ -1043,7 +1040,7 @@ static void domcreate_launch_dm(libxl__egc *egc, libxl__multidev *multidev,
         libxl__device_vkb_add(gc, domid, &vkb);
         libxl_device_vkb_dispose(&vkb);
 
-        domcreate_spawn_devmodel(egc, dcs, dcs->current_dm_index);
+        domcreate_spawn_devmodel(egc, dcs, &d_config->dms[dcs->dm_index]);
         return;
     }
     case LIBXL_DOMAIN_TYPE_PV:
@@ -1068,14 +1065,11 @@ static void domcreate_launch_dm(libxl__egc *egc, libxl__multidev *multidev,
         libxl__device_console_dispose(&console);
 
         if (need_qemu) {
-            assert(dcs->dmss);
-            domcreate_spawn_devmodel(egc, dcs, dcs->current_dm_index);
+            domcreate_spawn_devmodel(egc, dcs, &d_config->dms[dcs->dm_index]);
             return;
         } else {
-            assert(!dcs->dmss);
-            domcreate_devmodel_started(egc,
-                                       &dcs->dmss[dcs->current_dm_index].dm,
-                                       0);
+            assert(!dcs->dmss.dm.guest_domid);
+            domcreate_devmodel_started(egc, &dcs->dmss.dm, 0);
             return;
         }
     }
@@ -1094,7 +1088,7 @@ static void domcreate_devmodel_started(libxl__egc *egc,
                                        libxl__dm_spawn_state *dmss,
                                        int ret)
 {
-    libxl__domain_create_state *dcs = dmss->dcs;
+    libxl__domain_create_state *dcs = CONTAINER_OF(dmss, *dcs, dmss.dm);
     STATE_AO_GC(dmss->spawn.ao);
     libxl_ctx *ctx = CTX;
     int domid = dcs->guest_domid;
@@ -1108,18 +1102,18 @@ static void domcreate_devmodel_started(libxl__egc *egc,
         goto error_out;
     }
 
-    if (dmss->guest_domid) {
+    if (dcs->dmss.dm.guest_domid) {
         if (d_config->b_info.device_model_version
             == LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN) {
             libxl__qmp_initializations(gc, domid, dmss->dm->dmid, d_config);
         }
     }
 
-    dcs->current_dm_index++;
+    dcs->dm_index++;
 
     /* Spawn the next device model if it's not the last one */
-    if (dcs->current_dm_index < dcs->guest_config->num_dms) {
-        domcreate_spawn_devmodel(egc, dcs, dcs->current_dm_index);
+    if (dcs->dm_index < dcs->guest_config->num_dms) {
+        domcreate_spawn_devmodel(egc, dcs, &d_config->dms[dcs->dm_index]);
         return;
     }
 
@@ -1199,7 +1193,7 @@ static void domcreate_attach_pci(libxl__egc *egc, libxl__multidev *multidev,
             d_config->num_pcidevs);
         if (ret < 0) {
             LIBXL__LOG(ctx, LIBXL__LOG_ERROR,
-                       "libxl_create_pci_backend failed: %d", ret);
+                "libxl_create_pci_backend failed: %d", ret);
             goto error_out;
         }
     }
