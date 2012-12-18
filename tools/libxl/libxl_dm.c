@@ -1232,7 +1232,7 @@ out:
 
 void libxl__spawn_dm(libxl__egc *egc, libxl__stub_dm_spawn_state *dmss)
 {
-    libxl__domain_create_state *dcs = dmss->dm.dcs;
+    libxl__domain_create_state *dcs = CONTAINER_OF(dmss, *dcs, dmss);
     libxl_domain_config *const d_config = dcs->guest_config;
     STATE_AO_GC(dmss->dm.spawn.ao);
 
