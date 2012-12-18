@@ -1295,7 +1295,7 @@ _hidden int libxl__domain_build(libxl__gc *gc,
 
 /* for device model creation */
 _hidden const char *libxl__domain_device_model(libxl__gc *gc,
-                                        libxl_dmid dmid,
+                                        const libxl_dm *dm,
                                         const libxl_domain_build_info *info);
 _hidden int libxl__need_xenpv_qemu(libxl__gc *gc,
         int nr_consoles, libxl__device_console *consoles,
