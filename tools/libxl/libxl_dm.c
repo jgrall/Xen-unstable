@@ -346,22 +346,13 @@ static char *dm_spice_options(libxl__gc *gc,
     return opt;
 }
 
-static int libxl__dm_has_vif(const char *vifname, libxl_dmid dmid,
-                             const libxl_domain_config *guest_config)
+static int libxl__dm_has_vif(const libxl_device_nic *vif, const libxl_dm *dm)
 {
-    const libxl_dm *dm_config = &guest_config->dms[dmid];
-    int i = 0;
-
-    if (!vifname && (dm_config->capabilities & LIBXL_DM_CAP_UI))
+    if ((vif->dmid != LIBXL_DMID_INVALID) && vif->dmid == dm->dmid)
         return 1;
 
-    if (!dm_config->vifs)
-        return 0;
-
-    for (i = 0; dm_config->vifs[i]; i++) {
-        if (!strcmp(dm_config->vifs[i], vifname))
-            return 1;
-    }
+    if (dm->capabilities & LIBXL_DM_CAP_UI)
+        return 1;
 
     return 0;
 }
@@ -529,7 +520,7 @@ static char ** libxl__build_device_model_args_new(libxl__gc *gc,
         }
         for (i = 0; i < num_nics; i++) {
             if (nics[i].nictype == LIBXL_NIC_TYPE_VIF_IOEMU
-                && libxl__dm_has_vif(nics[i].ifname, dmid, guest_config)) {
+                && libxl__dm_has_vif(&nics[i], dm_config)) {
                 char *smac = libxl__sprintf(gc,
                                 LIBXL_MAC_FMT, LIBXL_MAC_BYTES(nics[i].mac));
                 const char *ifname = libxl__device_nic_devname(gc,

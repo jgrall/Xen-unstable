@@ -1468,7 +1468,7 @@ skip_vfb:
             libxl_dm_init (dm);
             dm->dmid = d_config->num_dms;
 
-            if (xlu_dm_parse(config, buf, dm)) {
+            if (xlu_dm_parse(config, buf, dm, d_config)) {
                 exit (-ERROR_FAIL);
             }
             d_config->num_dms++;

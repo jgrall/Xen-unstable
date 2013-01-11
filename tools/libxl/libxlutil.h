@@ -97,7 +97,7 @@ int xlu_pci_parse_bdf(XLU_Config *cfg, libxl_device_pci *pcidev, const char *str
  * Daemon specification parsing.
  */
 int xlu_dm_parse(XLU_Config *cfg, const char *spec,
-                 libxl_dm *dm);
+                 libxl_dm *dm, libxl_domain_config *d_config);
 
 /*
  * Vif rate parsing.
