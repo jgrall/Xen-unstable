@@ -24,8 +24,8 @@
 #include <xenguest.h>
 #include <xen/hvm/hvm_info_table.h>
 
-static int libxl__domain_config_setdefault(libxl__gc *gc,
-                                           libxl_domain_config *d_config)
+int libxl__domain_config_setdefault(libxl__gc *gc,
+                                    libxl_domain_config *d_config)
 {
     libxl_domain_build_info *b_info = &d_config->b_info;
     uint64_t cap = 0;
